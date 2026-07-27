@@ -1,0 +1,48 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ai-service
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: jdbc:postgresql://s3.java21.net:8000/${PG_DATABASE}
+    username: ${PG_USERNAME}
+    password: ${PG_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  # 원격 Redis 인프라 접속 설정
+  data:
+    redis:
+      # ip 외부 : 220.67.216.14 # ip 내부 : 10.116.64.14
+      host: 220.67.216.14
+      port: 6379
+      password: ${REDIS_PASSWORD}
+      database: 10
+  # AI 설정
+  ai:
+    vectorstore:
+      pgvector:
+        table-name: vector_store
+        dimensions: 1024
+        distance-type: COSINE_DISTANCE
+
+    ollama:
+      base-url: http://ollama.java21.net
+      chat:
+        model: qwen3.5:9b
+        temperature: 0.0
+
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+        chat:
+          model: gemini-2.5-flash
+          temperature: 0.0
