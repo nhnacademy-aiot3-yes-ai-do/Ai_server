@@ -16,9 +16,7 @@ public class MushService {
 
     public record Recipe(String name, String instructions) {}
 
-    public record OptimalConditions(
-            String temperature, String humidity, String co2, String illuminance
-    ) {}
+    public record OptimalConditions(String temperature, String humidity, String co2, String illuminance) {}
 
     public record AiEvaluation(
             int difficultyLevel,       // 초보자 난이도 (1: 매우 쉬움 ~ 5: 매우 어려움)
@@ -37,8 +35,8 @@ public class MushService {
     ) {}
 
     // 결과 Redis에 저장해 다음엔 AI 거치지 않고 꺼낼 수 있게 해줌
-    @Cacheable(value = "ai:mushroom:guide", key = "#mushroomName")
-    public MushroomGuideResponse generateRealDataGuide(String mushroomName, String combinedData) {
+    @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
+    public MushroomGuideResponse generateRealDataGuide(Long mushroomId, String mushroomName, String combinedData) {
 
 
         String systemPrompt = """
