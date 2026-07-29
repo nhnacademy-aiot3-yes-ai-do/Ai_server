@@ -30,6 +30,8 @@ spring:
   ai:
     vectorstore:
       pgvector:
+        # 테이블 자동 생성 허용
+        initialize-schema: true
         schema-name: ai
         table-name: ai_vector
         dimensions: 1024

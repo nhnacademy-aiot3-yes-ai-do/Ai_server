@@ -18,18 +18,15 @@ import java.time.Duration;
 public class RedisCacheConfig {
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-
-        // JSON 직렬화 설정 (Builder 패턴 적용 및 안전한 타입 저장 활성화)
         GenericJacksonJsonRedisSerializer jsonSerializer = GenericJacksonJsonRedisSerializer.builder()
-                // 이 옵션을 켜야 JSON 안에 "@class" 항목이 생겨서 나중에 데이터를 정확히 꺼낼 수 있음
-                .enableUnsafeDefaultTyping()
+                .enableUnsafeDefaultTyping() // JSON에 @class 타입 정보 자동 저장
                 .build();
 
         // Redis 캐시 규칙 설정
         RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig()
                 // Key는 눈에 잘 보이는 문자열로 저장
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                // Value는 위에서 만든 완벽한 JSON 직렬화기로 저장
+                // Value는 위에서 만든 JSON 직렬화기로 저장
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer))
                 // 7일 뒤에 데이터 삭제
                 .entryTtl(Duration.ofDays(7));

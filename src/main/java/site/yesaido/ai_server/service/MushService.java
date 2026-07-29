@@ -5,6 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import site.yesaido.ai_server.dto.MushroomCsvDto;
+import site.yesaido.ai_server.exception.MushDataNotFoundException;
+import site.yesaido.ai_server.reader.MushCsvReader;
 
 import java.util.List;
 
@@ -13,6 +16,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MushService {
     private final ChatClient chatClient;
+    private final MushCsvReader mushCsvReader;
 
     public record Recipe(String name, String instructions) {}
 
@@ -36,8 +40,25 @@ public class MushService {
 
     // 결과 Redis에 저장해 다음엔 AI 거치지 않고 꺼낼 수 있게 해줌
     @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
-    public MushroomGuideResponse generateRealDataGuide(Long mushroomId, String mushroomName, String combinedData) {
+    public MushroomGuideResponse generateRealDataGuide(Long mushroomId) {
+        log.info("캐시가 만료되어 다시 {}번 데이터 요약을 시작합니다.", mushroomId);
 
+        String mushroomName = "";
+        StringBuilder combinedData = new StringBuilder();
+
+        List<MushroomCsvDto> csvDtoList = mushCsvReader.readMushroomCsv();
+        for (MushroomCsvDto dto : csvDtoList) {
+            if(dto.mushroomId().equals(mushroomId)) {
+                mushroomName = dto.mushroomName();
+                combinedData.append("[").append(dto.title()).append("] ").append(dto.content()).append("\n");
+            }
+        }
+
+        // 뽑아낸 데이터 없으면 에러 발생
+        if(combinedData.isEmpty()){
+            log.error("ID {}에 해당하는 버섯 학습 데이터가 없습니다.",mushroomId);
+            throw new MushDataNotFoundException(mushroomId);
+        }
 
         String systemPrompt = """
             당신은 스마트팜 버섯 재배 최고 권위자이자 데이터 분석가입니다.

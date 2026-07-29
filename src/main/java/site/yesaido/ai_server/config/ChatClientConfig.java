@@ -17,7 +17,7 @@ public class ChatClientConfig {
     }
 
     // Ollama
-//    @Primary
+    // @Primary
     @Bean
     public ChatClient ollamaChatClient(@Qualifier("ollamaChatModel") ChatModel ollamaModel) {
         return ChatClient.builder(ollamaModel).build();
