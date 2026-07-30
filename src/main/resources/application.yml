@@ -12,10 +12,21 @@ spring:
     username: ${PG_USERNAME}
     password: ${PG_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    # DBCP2 적용
+    type: org.apache.commons.dbcp2.BasicDataSource
+    dbcp2:
+      initial-size: 5 # 서버 켜질 때 DB에 연결할 커넥션 개수
+      max-total: 20 # 트래픽 터졌을 때 최대 커넥션 개수
+      max-idle: 10 # 최대 유지 커넥션 수
+      min-idle: 5 # 최소 유지 커넥션 수
+      # springboot 4. 에서 다른 대체 프로퍼티가 없어 그냥 사용하던가 HikariCP로 전환 추천
+      max-wait-millis: 10000 # 20개 전부 사용중일 때 21번째 요청 최대 대기 시간(서버 죽는 것 방지 위해 10초 넘기면 에러 발생)
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # update는 켜질때마다 DB 테이블 구조 비교 및 자동 변경 기능까지 있어 누군가 실수로 Entity 필드를 바꾸거나 지우고 배포했을 때 DB 구조가 맘대로 바뀌거나 날아갈 수 있어 비교만하는 validate로 변경
+      # validate는 DB 테이블 구조 비교했을 때 구조 다르면 서버 에러 뱉으면 죽음
+      ddl-auto: validate
     show-sql: true
 
   # 원격 Redis 인프라 접속 설정
