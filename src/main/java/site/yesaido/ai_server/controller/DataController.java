@@ -17,7 +17,7 @@ public class DataController {
     private String pgStackingKey;
 
     @PostMapping("/load-vector")
-    public ResponseEntity<String> loadVector(@RequestHeader(value = "PG_Key", required = false) String pgKey) {
+    public ResponseEntity<String> loadVector(@RequestHeader(value = "PG_STACKING_KEY", required = false) String pgKey) {
         if(pgKey == null || !pgKey.equals(pgStackingKey)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("접근 권한이 없습니다.");
         }

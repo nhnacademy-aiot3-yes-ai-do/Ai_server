@@ -60,7 +60,7 @@ public class MushVectorService {
             return "Vector DB 적재 성공! 데이터 수: " + documents.size();
         } catch (Exception e) {
             log.error("벡터 DB 적재 중 오류 발생", e);
-            return "적재 실패: " + e.getMessage();
+            throw new IllegalArgumentException("vector DB 적재에 실패했습니다", e);
         }
     }
 

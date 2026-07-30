@@ -34,3 +34,6 @@ build/
 
 ### 환경 변수 설정
 .env
+
+### vector 적재 비밀번호
+http-client.private.env.json

@@ -6,6 +6,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import site.yesaido.ai_server.service.MushService;
 
@@ -16,7 +17,8 @@ public class MushCacheWarmer {
     private final MushService mushService;
     // MushService 파라미터로 mushroomId 하나만 받고 스스로 CSV를 읽을 수 있게 변경되어 워머에서 CSV 읽고 HashMap 묶고 데이터 합치던 과정 필요 없어짐
     private final CacheManager cacheManager; // Redis 창고 관리자 주입
-
+    @Async // 서버 켜질 때 실행되는데 기본 설정이 동기로 동작이라 AI 요약 작성하는 워머 작업 끝날 때까지(10초) 사용자 접속을 못받아 서버 켜지는데 걸리는 시간이 길어짐
+    // K8s 환경에서는 서버 켜지는데 오래걸리면 무한 재시작 시켜버리는 문제가 있어 백그라운드로 작업할 수 있게 비동기로 처리로 변경
     @EventListener(ApplicationReadyEvent.class) // 스프링부트 서버가 완전히 켜지고 나면 외부 요청이 없어이 자동으로 이 메서드를 1회 실행
     public void warming() {
         log.info("[Cache Warming Started] 버섯 데이터 Redis 적재를 시작합니다...");

@@ -5,7 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import site.yesaido.ai_server.dto.MushroomCsvDto;
+import site.yesaido.ai_server.dto.*;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 
@@ -18,29 +18,9 @@ public class MushService {
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader;
 
-    public record Recipe(String name, String instructions) {}
-
-    public record OptimalConditions(String temperature, String humidity, String co2, String illuminance) {}
-
-    public record AiEvaluation(
-            int difficultyLevel,       // 초보자 난이도 (1: 매우 쉬움 ~ 5: 매우 어려움)
-            int growthSpeed,           // 성장 속도 (1: 매우 느림 ~ 5: 수확이 아주 빠름)
-            String sensitivity,        // 가장 주의해야 할 환경 요인 (예: "건조함에 매우 취약")
-            String aiStrategy          // AI의 1:1 맞춤형 재배 컨설팅 (3문장)
-    ) {}
-
-    public record MushroomGuideResponse(
-            AiEvaluation evaluation,        // 뱃지 및 AI 재배 전략
-            String summary,                 // 기본 정보 요약
-            String caution,                 // 치명적 환경 경고
-            String tip,                     // 수확/보관 꿀팁
-            OptimalConditions conditions,   // 센서 세팅용 최적 환경
-            List<Recipe> recipes            // 요리법
-    ) {}
-
     // 결과 Redis에 저장해 다음엔 AI 거치지 않고 꺼낼 수 있게 해줌
     @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
-    public MushroomGuideResponse generateRealDataGuide(Long mushroomId) {
+    public MushGuideResponse generateRealDataGuide(Long mushroomId) {
         log.info("캐시가 만료되어 다시 {}번 데이터 요약을 시작합니다.", mushroomId);
 
         String mushroomName = "";
@@ -91,6 +71,6 @@ public class MushService {
                 .system(systemPrompt)
                 .user(userDataPrompt)
                 .call()
-                .entity(MushroomGuideResponse.class);
+                .entity(MushGuideResponse.class);
     }
 }
