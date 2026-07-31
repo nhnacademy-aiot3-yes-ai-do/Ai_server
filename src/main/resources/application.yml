@@ -33,7 +33,7 @@ spring:
   data:
     redis:
       # ip 외부 : 220.67.216.14 # ip 내부 : 10.116.64.14
-      host: 220.67.216.14
+      host: ${REDIS_HOST:220.67.216.14}
       port: 6379
       password: ${REDIS_PASSWORD}
       database: 10

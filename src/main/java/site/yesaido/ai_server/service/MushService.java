@@ -1,5 +1,7 @@
 package site.yesaido.ai_server.service;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -14,6 +16,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 public class MushService {
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader;

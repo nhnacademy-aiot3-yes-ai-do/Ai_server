@@ -9,9 +9,9 @@ import org.springframework.context.annotation.Primary;
 
 @Configuration
 public class ChatClientConfig {
+    // Gemini
     @Bean
     @Primary
-    // Gemini
     public ChatClient geminiChatClient(@Qualifier("googleGenAiChatModel") ChatModel geminiModel) {
         return ChatClient.builder(geminiModel).build();
     }
