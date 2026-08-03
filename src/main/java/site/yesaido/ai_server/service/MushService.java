@@ -17,7 +17,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
-public class MushService {
+public class MushService{
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader;
     private static final String SYSTEM_PROMPT = """

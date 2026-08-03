@@ -14,7 +14,7 @@ public class GlobalExceptionHandler {
 
     // 잘못된 요청 파라미터/타입 불일치 처리(400 BAD_REQUEST)
     // 예: /api/mushrooms/abc/guide 처럼 숫자에 문자를 입력한 경우
-    @ExceptionHandler({MethodArgumentTypeMismatchException.class, IllegalArgumentException.class})
+    @ExceptionHandler({MethodArgumentTypeMismatchException.class})
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception e){
         log.warn("[BAD_REQUEST] 유효하지 않은 파라미터 요청입니다. {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -42,6 +42,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(CsvLoadException.class)
     public ResponseEntity<ApiResponse<Void>> handleCsvLoadException(CsvLoadException e){
         log.error("[CsvLoadException] CSV 데이터 로딩 실패", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.getMessage()));
+    }
+
+    @ExceptionHandler(VectorDbException.class)
+    public ResponseEntity<ApiResponse<Void>> handleVectorDbException(VectorDbException e){
+        log.error("[VectorDbException] Vector DB 연동 중 오류 발생", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(e.getMessage()));
     }

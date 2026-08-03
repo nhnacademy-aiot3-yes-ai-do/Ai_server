@@ -5,6 +5,7 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 import org.springframework.ai.document.Document;
 import site.yesaido.ai_server.dto.MushroomCsvDto;
+import site.yesaido.ai_server.exception.VectorDbException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -60,7 +61,7 @@ public class MushVectorService {
             return "Vector DB 적재 성공! 데이터 수: " + documents.size();
         } catch (Exception e) {
             log.error("벡터 DB 적재 중 오류 발생", e);
-            throw new IllegalArgumentException("vector DB 적재에 실패했습니다", e);
+            throw new VectorDbException("vector DB 적재에 실패했습니다", e);
         }
     }
 

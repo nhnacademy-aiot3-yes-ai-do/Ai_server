@@ -47,6 +47,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("500  VectorDbException 예외 처리 핸들러 테스트")
+    void handleVectorDbException() {
+        VectorDbException exception = new VectorDbException(new RuntimeException("파일 에러"));
+        ResponseEntity<ApiResponse<Void>> response = handler.handleVectorDbException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().success()).isFalse();
+    }
+
+    @Test
     @DisplayName("400 Bad Request 파라미터 타입 불일치 핸들러 테스트")
     void handleBadRequestTest() {
         IllegalArgumentException exception = new IllegalArgumentException("파라미터 타입 오류");
