@@ -10,7 +10,7 @@ runs:
         echo "DB_NAME=testdb" >> "$GITHUB_ENV"
         echo "DB_USERNAME=test" >> "$GITHUB_ENV"
         echo "DB_PASSWORD=test1234" >> "$GITHUB_ENV"
-        echo "Auth_DB_SCHEMA=public" >> "$GITHUB_ENV"
+        echo "Ai_DB_SCHEMA=public" >> "$GITHUB_ENV"
         
         echo "REDIS_HOST=localhost" >> "$GITHUB_ENV"                                                                                                                                                 
         echo "REDIS_PORT=6379" >> "$GITHUB_ENV"                                                                                                                                                      
