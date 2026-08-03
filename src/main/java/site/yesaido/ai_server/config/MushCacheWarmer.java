@@ -26,14 +26,14 @@ import java.time.Duration;
 서버 A, B 동시에 켜짐 ──> Redis SETNX 락 선점한 1대만 AI 호출, 나머지는 Skip!
  */
 
+/**
+ * [force = true 역할]
+ * 컴파일 에러 방지 : @RequiredArgsConstructor로 final 필드가 초기화되지 않아 발생하는 문제 방지
+ * 강제로 null이나 0 같은 기본값을 채워 넣어, 스프링이 프록시(가짜) 객체를 무사히 만들 수 있게 도와줍니다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
-/**
- * [force = true 역할]
- * @RequiredArgsConstructor로 인한 final 필드가 초기화되지 않아 발생하는 컴파일 에러를 방지합니다.
- * 강제로 null이나 0 같은 기본값을 채워 넣어, 스프링이 프록시(가짜) 객체를 무사히 만들 수 있게 도와줍니다.
- */
 @NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 public class MushCacheWarmer {
     private final MushService mushService;
@@ -45,6 +45,13 @@ public class MushCacheWarmer {
     // K8s 환경에서는 서버 켜지는데 오래걸리면 무한 재시작 시켜버리는 문제가 있어 백그라운드로 작업할 수 있게 비동기로 처리로 변경
     @EventListener(ApplicationReadyEvent.class) // 스프링부트 서버가 완전히 켜지고 나면 외부 요청이 없어이 자동으로 이 메서드를 1회 실행
     public void warming() {
+        // @RequiredArgsConstructor(onConstructor_ = {@Autowired})가 있어서 실제로는 의존성 주입이 잘 되지만
+        // @NoArgsConstructor(force = true)가 있어서 final 필드 값이 null 들어갈 수 있다는 경고 메시지가 떠서  null 방어 코드 추가
+        if (cacheManager == null || stringRedisTemplate == null || mushService == null) {
+            log.warn("캐시 워밍 실패: 의존성 주입 객체가 null입니다.");
+            return;
+        }
+
         log.info("[Cache Warming Started] 버섯 데이터 Redis 적재를 시작합니다...");
         long startTime = System.currentTimeMillis();
         Cache guideCache = cacheManager.getCache("ai:mushroom");

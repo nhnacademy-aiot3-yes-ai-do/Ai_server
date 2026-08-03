@@ -8,7 +8,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * @EnableAsync만 선언하고 Executor 빈을 만들지 않으면 요청 올 때마다 무제한으로 스레드를 생성하고 버리는 메모리 누수 문제가 발생
+ * 어노테이션 @EnableAsync만 선언하고 Executor 빈을 만들지 않으면 요청 올 때마다 무제한으로 스레드를 생성하고 버리는 메모리 누수 문제가 발생
  * 스레드 풀 크기와 큐 용량 제한할 수 있는 빈 설정 등록 후 Async에 저장
  */
 @Configuration

@@ -49,6 +49,10 @@ public class MushService{
     // Spring AI의 PromptTemplate 기능 사용하는 방식으로 변경 <- 프롬프트를 안전하고 동적으로 관리할 수 있음
     @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
     public MushGuideResponse generateRealDataGuide(Long mushroomId) {
+        if (chatClient == null || mushCsvReader == null) {
+            log.warn("chatClient 또는 mushCsvReader가 null입니다");
+            throw new IllegalStateException("chatClient 또는 mushCsvReader가 null입니다");
+        }
         log.info("캐시가 만료되어 다시 {}번 데이터 요약을 시작합니다.", mushroomId);
 
         String mushroomName = "";
