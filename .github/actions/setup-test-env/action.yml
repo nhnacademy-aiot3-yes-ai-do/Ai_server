@@ -18,4 +18,4 @@ runs:
         
         echo "JWT_SECRET=test-jwt-secret-for-ci-only-please-ignore" >> "$GITHUB_ENV"
         echo "JWT_ACCESSTOKEN_EXPIRATION_MS=100000" >> "$GITHUB_ENV"
-        echo "JWT_REFRESHTOKEN_EXPIRATION_MS=200000000" >> "$GITHUB_ENV"
+        echo "JWT_REFRESHTOKEN기_EXPIRATION_MS=200000000" >> "$GITHUB_ENV"

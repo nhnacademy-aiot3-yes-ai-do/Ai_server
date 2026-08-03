@@ -8,9 +8,9 @@ spring:
     import: optional:file:.env[.properties]
 
   datasource:
-    url: jdbc:postgresql://s3.java21.net:8000/${PG_DATABASE}?currentSchema=ai
-    username: ${PG_USERNAME}
-    password: ${PG_PASSWORD}
+    url: jdbc:postgresql://s3.java21.net:8000/${DB_NAME}?currentSchema=ai
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     # DBCP2 적용
     type: org.apache.commons.dbcp2.BasicDataSource
