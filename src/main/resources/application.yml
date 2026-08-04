@@ -8,21 +8,32 @@ spring:
     import: optional:file:.env[.properties]
 
   datasource:
-    url: jdbc:postgresql://s3.java21.net:8000/${PG_DATABASE}
-    username: ${PG_USERNAME}
-    password: ${PG_PASSWORD}
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}?currentSchema=${Ai_DB_SCHEMA}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    # DBCP2 적용
+    type: org.apache.commons.dbcp2.BasicDataSource
+    dbcp2:
+      initial-size: 5 # 서버 켜질 때 DB에 연결할 커넥션 개수
+      max-total: 20 # 트래픽 터졌을 때 최대 커넥션 개수
+      max-idle: 10 # 최대 유지 커넥션 수
+      min-idle: 5 # 최소 유지 커넥션 수
+      # springboot 4. 에서 다른 대체 프로퍼티가 없어 그냥 사용하던가 HikariCP로 전환 추천
+      max-wait-millis: 10000 # 20개 전부 사용중일 때 21번째 요청 최대 대기 시간(서버 죽는 것 방지 위해 10초 넘기면 에러 발생)
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # update는 켜질때마다 DB 테이블 구조 비교 및 자동 변경 기능까지 있어 누군가 실수로 Entity 필드를 바꾸거나 지우고 배포했을 때 DB 구조가 맘대로 바뀌거나 날아갈 수 있어 비교만하는 validate로 변경
+      # validate는 DB 테이블 구조 비교했을 때 구조 다르면 서버 에러 뱉으면 죽음
+      ddl-auto: validate
     show-sql: true
 
   # 원격 Redis 인프라 접속 설정
   data:
     redis:
       # ip 외부 : 220.67.216.14 # ip 내부 : 10.116.64.14
-      host: 220.67.216.14
+      host: ${REDIS_HOST:220.67.216.14}
       port: 6379
       password: ${REDIS_PASSWORD}
       database: 10
@@ -30,12 +41,18 @@ spring:
   ai:
     vectorstore:
       pgvector:
-        table-name: vector_store
+        # 테이블 자동 생성 허용
+        initialize-schema: true
+        schema-name: ai
+        table-name: ai_vector
         dimensions: 1024
         distance-type: COSINE_DISTANCE
 
+
     ollama:
       base-url: http://ollama.java21.net
+      embedding:
+        model: bge-m3:latest
       chat:
         model: qwen3.5:9b
         temperature: 0.0
@@ -46,3 +63,11 @@ spring:
         chat:
           model: gemini-2.5-flash
           temperature: 0.0
+
+eureka:
+  client:
+    enabled: false
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true

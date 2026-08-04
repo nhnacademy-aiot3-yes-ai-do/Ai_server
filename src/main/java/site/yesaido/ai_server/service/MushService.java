@@ -1,47 +1,27 @@
 package site.yesaido.ai_server.service;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import site.yesaido.ai_server.dto.*;
+import site.yesaido.ai_server.exception.MushDataNotFoundException;
+import site.yesaido.ai_server.reader.MushCsvReader;
 
 import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
-public class MushService {
+@RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
+public class MushService{
     private final ChatClient chatClient;
-
-    public record Recipe(String name, String instructions) {}
-
-    public record OptimalConditions(
-            String temperature, String humidity, String co2, String illuminance
-    ) {}
-
-    public record AiEvaluation(
-            int difficultyLevel,       // 초보자 난이도 (1: 매우 쉬움 ~ 5: 매우 어려움)
-            int growthSpeed,           // 성장 속도 (1: 매우 느림 ~ 5: 수확이 아주 빠름)
-            String sensitivity,        // 가장 주의해야 할 환경 요인 (예: "건조함에 매우 취약")
-            String aiStrategy          // AI의 1:1 맞춤형 재배 컨설팅 (3문장)
-    ) {}
-
-    public record MushroomGuideResponse(
-            AiEvaluation evaluation,        // 뱃지 및 AI 재배 전략
-            String summary,                 // 기본 정보 요약
-            String caution,                 // 치명적 환경 경고
-            String tip,                     // 수확/보관 꿀팁
-            OptimalConditions conditions,   // 센서 세팅용 최적 환경
-            List<Recipe> recipes            // 요리법
-    ) {}
-
-    // 결과 Redis에 저장해 다음엔 AI 거치지 않고 꺼낼 수 있게 해줌
-    @Cacheable(value = "ai:mushroom:guide", key = "#mushroomName")
-    public MushroomGuideResponse generateRealDataGuide(String mushroomName, String combinedData) {
-
-
-        String systemPrompt = """
+    private final MushCsvReader mushCsvReader;
+    private static final String SYSTEM_PROMPT = """
             당신은 스마트팜 버섯 재배 최고 권위자이자 데이터 분석가입니다.
             제공되는 [수집된 버섯 데이터 모음]을 바탕으로, 초보 농부가 대시보드에서 한눈에 볼 수 있는 직관적인 JSON 데이터를 생성하세요.
             
@@ -58,20 +38,52 @@ public class MushService {
             - conditions: 데이터에 명시된 온도, 습도, 조도를 파싱하세요. 단, 이산화탄소(CO2) 농도는 원문에 없으므로 당신의 농업 지식을 바탕으로 '이 특정 버섯 품종'의 생육에 가장 알맞은 정확한 CO2 ppm 범위를 반드시 추론하여 기입하세요. (품종별로 CO2 요구량이 다르다는 점을 명심하세요!)
             - recipes: 누구나 집에서 쉽게 따라 할 수 있는 맛있는 한국식 레시피 2개를 제안하세요. 조리법에는 "간장 2큰술", "물 500ml"처럼 정확한 정량 계량 수치를 반드시 포함하여 상세히 서술하세요.
             """;
-
-        String userDataPrompt = String.format("""
-            대상 품종: %s
+    private static final String USER_PROMPT_TEMPLATE = """
+                        대상 품종: {mushroomName}
             
-            [수집된 버섯 데이터 모음]
-            %s
-            """, mushroomName, combinedData);
+                        [수집된 버섯 데이터 모음]
+                        {combinedData}
+                        """;
 
-        log.info("'{}' 가이드라인 및 최적 제어 환경 요약 구조화 출력(Gemini Flash) 요청 시작...", mushroomName);
+    // 결과 Redis에 저장해 다음엔 AI 거치지 않고 꺼낼 수 있게 해줌
+    // Spring AI의 PromptTemplate 기능 사용하는 방식으로 변경 <- 프롬프트를 안전하고 동적으로 관리할 수 있음
+    @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
+    public MushGuideResponse generateRealDataGuide(Long mushroomId) {
+        if (chatClient == null || mushCsvReader == null) {
+            log.warn("chatClient 또는 mushCsvReader가 null입니다");
+            throw new IllegalStateException("chatClient 또는 mushCsvReader가 null입니다");
+        }
+        log.info("캐시가 만료되어 다시 {}번 데이터 요약을 시작합니다.", mushroomId);
+
+        String mushroomName = "";
+        StringBuilder combinedData = new StringBuilder();
+
+        List<MushroomCsvDto> csvDtoList = mushCsvReader.readMushroomCsv();
+        for (MushroomCsvDto dto : csvDtoList) {
+            if(dto.mushroomId().equals(mushroomId)) {
+                mushroomName = dto.mushroomName();
+                combinedData.append("[").append(dto.title()).append("] ").append(dto.content()).append("\n");
+            }
+        }
+
+        // 뽑아낸 데이터 없으면 에러 발생
+        if(combinedData.isEmpty()){
+            log.error("ID {}에 해당하는 버섯 학습 데이터가 없습니다.",mushroomId);
+            throw new MushDataNotFoundException(mushroomId);
+        }
+
+        final String finalMushroomName = mushroomName;
+        final String finalCombinedData = combinedData.toString();
+
+
+        log.info("'{}' 가이드라인 및 최적 제어 환경 요약 구조화 출력(Gemini Flash) 요청 시작...", finalMushroomName);
 
         return chatClient.prompt()
-                .system(systemPrompt)
-                .user(userDataPrompt)
+                .system(SYSTEM_PROMPT)
+                .user(u -> u.text(USER_PROMPT_TEMPLATE)
+                        .param("mushroomName", finalMushroomName)
+                        .param("combinedData", finalCombinedData))
                 .call()
-                .entity(MushroomGuideResponse.class);
+                .entity(MushGuideResponse.class);
     }
 }
