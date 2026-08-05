@@ -37,3 +37,6 @@ build/
 
 ### vector 적재 비밀번호
 http-client.private.env.json
+
+### application-dev.yml
+application-dev.yml

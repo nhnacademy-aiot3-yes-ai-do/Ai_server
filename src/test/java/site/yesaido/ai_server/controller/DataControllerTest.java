@@ -28,7 +28,8 @@ class DataControllerTest {
     void loadVectorUnauthorizedTest() throws Exception{
         mockMvc.perform(post("/api/admin/data/load-vector")) // 실제 엔드포인트 주소 작성
                 .andExpect(status().isUnauthorized()) // 상태 확인(401 에러 반환 확인)
-                .andExpect(jsonPath("$.success").value(false)); // JSON 응답 검증
+                .andExpect(jsonPath("$.status").value("401"))
+                .andExpect(jsonPath("$.detail").value("접근 권한이 없습니다."));
     }
 
     @Test
