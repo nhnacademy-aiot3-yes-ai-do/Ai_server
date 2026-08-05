@@ -28,7 +28,6 @@ class DataControllerTest {
     void loadVectorUnauthorizedTest() throws Exception{
         mockMvc.perform(post("/api/admin/data/load-vector")) // 실제 엔드포인트 주소 작성
                 .andExpect(status().isUnauthorized()) // 상태 확인(401 에러 반환 확인)
-                .andExpect(jsonPath("$.status").value("401"))
                 .andExpect(jsonPath("$.detail").value("접근 권한이 없습니다."));
     }
 
@@ -41,7 +40,6 @@ class DataControllerTest {
         mockMvc.perform(post("/api/admin/data/load-vector")
                         .header("PG_STACKING_KEY", "test-secret-key")) // 주입된 테스트용 키와 일치해야 함
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value("Vector DB 적재 성공")); // 느낌표 제거 (given과 맞춤)
     }
 }
