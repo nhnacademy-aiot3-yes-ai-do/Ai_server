@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: ai-service
+    name: ai-server
   config:
     import: optional:file:.env[.properties]
 
