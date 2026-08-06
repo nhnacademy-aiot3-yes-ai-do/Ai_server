@@ -1,10 +1,2 @@
-### 실패 테스트(헤더 누락)
-POST http://localhost:8080/api/admin/data/load-vector
-
-### 실패 테스트(비밀번호 틀림)
-POST http://localhost:8080/api/admin/data/load-vector
-PG_STACKING_KEY: 123
-
 ### 성공 테스트(정상 호출)
-POST http://localhost:8080/api/admin/data/load-vector
-PG_STACKING_KEY: {{PG_STACKING_KEY}}
+POST http://localhost:8081/api/admin/data/load-vector

@@ -15,8 +15,4 @@ public record ApiResponse<T>(
     public static <T> ApiResponse<T> success(T data){ // 성공했을 때 호출할 메서드(데이터 포함)
         return new ApiResponse<>(true, "요청이 성공적으로 처리되었습니다.", data);
     }
-
-    public static <T> ApiResponse<T> error(String message){ // 실패했을 때 호출 메서드(에러 메시지 ㅇ, 데이터 미포함)
-        return new ApiResponse<>(false, message, null);
-    }
 }

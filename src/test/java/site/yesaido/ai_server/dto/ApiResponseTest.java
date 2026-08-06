@@ -15,13 +15,4 @@ class ApiResponseTest {
         assertThat(response.data()).isEqualTo("테스트");
 
     }
-
-    @Test
-    @DisplayName("에러 응답 생성 테스트")
-    void errorResponseTest(){
-        ApiResponse<String> response = ApiResponse.error("에러 메시지");
-        assertThat(response.success()).isFalse();
-        assertThat(response.message()).isEqualTo("에러 메시지");
-        assertThat(response.data()).isNull();
-    }
 }
