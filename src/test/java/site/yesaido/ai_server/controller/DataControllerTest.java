@@ -30,6 +30,7 @@ class DataControllerTest {
 
         mockMvc.perform(post("/api/admin/data/load-vector"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value("Vector DB 적재 성공"));
     }
 }

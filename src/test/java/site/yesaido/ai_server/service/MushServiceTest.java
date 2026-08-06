@@ -18,6 +18,7 @@ import static org.mockito.Mockito.mock;
 import java.util.function.Consumer;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 @ExtendWith(MockitoExtension.class)
 class MushServiceTest {
@@ -46,6 +47,9 @@ class MushServiceTest {
                 .hasMessageContaining("999");
     }
 
+    /**
+     * 람다 내부에서 mushroomId, mushroomName, combinedData 파라미터 실제 전달 되는지 테스트 검증 추가
+     */
     @Test
     @DisplayName("정상 조회 시 버섯 가이드 정보 반환")
     void generateRealDataGuideSuccessTest(){
@@ -86,6 +90,11 @@ class MushServiceTest {
         // 체이닝 중간 통로 가짜 객체 생성
         ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         ChatClient.CallResponseSpec callSpec = mock(ChatClient.CallResponseSpec.class);
+        ChatClient.PromptUserSpec userSpec = mock(ChatClient.PromptUserSpec.class);
+
+        // userSpec 람다 내부 메서드 체이닝을 위해 스텁 설정 추가
+        given(userSpec.text(anyString())).willReturn(userSpec);
+        given(userSpec.param(anyString(), any())).willReturn(userSpec);
 
         // chatClient.prompt() 호출 시 -> 요청 전용 매니저(requestSpec)를 돌려줘라
         given(chatClient.prompt()).willReturn(requestSpec);
@@ -93,7 +102,11 @@ class MushServiceTest {
         given(requestSpec.system(anyString())).willReturn(requestSpec);
         // requestSpec.user 호출 시 -> 계속 체이닝할 수 있게 자기 자신(requestSpec)을 돌려줘라
         // 타겟 제네릭 타입을 명시하여 모호성 에러 해결
-        given(requestSpec.user(Mockito.<Consumer<ChatClient.PromptUserSpec>>any())).willReturn(requestSpec);
+        given(requestSpec.user(Mockito.<Consumer<ChatClient.PromptUserSpec>>any())).willAnswer(invocation -> {
+            Consumer<ChatClient.PromptUserSpec> consumer = invocation.getArgument(0);
+            consumer.accept(userSpec); // 👈 람다 내부 .param() 코드를 실제로 실행시킴!
+            return requestSpec;
+        });
         // requestSpec.call() 호출 시 -> 이제 응답 전용 매니저(callSpec)로 넘겨줘라
         given(requestSpec.call()).willReturn(callSpec);
         // callSpec.entity 호출 시 -> 최종 결과물인 가짜 DTO(mockGuide)를 넘겨주고 끝내라
@@ -108,5 +121,9 @@ class MushServiceTest {
                 .isEqualTo(mockGuide);
 
         verify(mushCsvReader).readMushroomCsv();
+        // 값 바인딩 잘 됬나 검증 코드 추가
+        verify(userSpec).param("mushroomId", mushroomId);
+        verify(userSpec).param("mushroomName", "느타리버섯");
+        verify(userSpec).param(org.mockito.ArgumentMatchers.eq("combinedData"), anyString());
     }
 }
