@@ -30,7 +30,7 @@ public class RedisCacheConfig {
                 .build();
 
         GenericJacksonJsonRedisSerializer jsonSerializer = GenericJacksonJsonRedisSerializer.builder()
-                .enableDefaultTyping(typeValidator) // JSON에 @class 타입 정보 자동 저장
+                .enableDefaultTyping(typeValidator) // JSON에 @class 타입 정보 자동 저장(꺼낼 때 어떤 DTO였는지 잃어버리지 않고 역직렬화 하기 위해서)
                 .build();
 
         // Redis 캐시 규칙 설정

@@ -62,7 +62,6 @@ public class MushCacheWarmer {
                 // Redis에서 찾을 Key를 명세서 규격('3:guide")으로 조립
                 String cacheKey = mushroomId + ":guide";
 
-                // 캐시가 이미 존재하면 패스
                 if (guideCache != null && guideCache.get(cacheKey) != null) {
                     log.info("이미 Redis에 'mushroomId: {}' 가이드라인이 존재합니다.", mushroomId);
                     continue;
@@ -71,7 +70,7 @@ public class MushCacheWarmer {
                 수정사항 : [분산 락 적용]
                 버섯 가이드는 모든 사용자가 공통으로 조회하는 도감(참조) 데이터이므로,
                 다중 서버(K8s 파드) 환경에서 동시에 API를 중복 호출하는 비용 낭비를 막기 위해
-                Redis SETNX를 이용해 선착순 1대의 인스턴스만 AI 요약을 생성하도록 제어
+                Redis SETNX(SET if Not eXists = 키가 존재하지 않을 때만 저장해라)를 이용해 선착순 1대의 인스턴스만 AI 요약을 생성하도록 제어
                  */
                 String lockKey = "ai:mushroom:lock:" + mushroomId;
                 Boolean isLocked = stringRedisTemplate.opsForValue()

@@ -2,7 +2,7 @@ package site.yesaido.ai_server.reader;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import site.yesaido.ai_server.dto.MushroomCsvDto;
+import site.yesaido.ai_server.dto.ai.MushroomCsvDto;
 import java.util.List;
 import static org.assertj.core.api.Assertions.*;
 

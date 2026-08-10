@@ -8,7 +8,8 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
-import site.yesaido.ai_server.dto.*;
+import org.springframework.core.io.Resource;
+import site.yesaido.ai_server.dto.ai.*;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import static org.assertj.core.api.Assertions.*;
@@ -93,18 +94,18 @@ class MushServiceTest {
         ChatClient.PromptUserSpec userSpec = mock(ChatClient.PromptUserSpec.class);
 
         // userSpec 람다 내부 메서드 체이닝을 위해 스텁 설정 추가
-        given(userSpec.text(anyString())).willReturn(userSpec);
+        given(userSpec.text((Resource) any())).willReturn(userSpec);
         given(userSpec.param(anyString(), any())).willReturn(userSpec);
 
         // chatClient.prompt() 호출 시 -> 요청 전용 매니저(requestSpec)를 돌려줘라
         given(chatClient.prompt()).willReturn(requestSpec);
         // requestSpec.system 호출 시 -> 계속 체이닝할 수 있게 자기 자신(requestSpec) 돌려줘라
-        given(requestSpec.system(anyString())).willReturn(requestSpec);
+        given(requestSpec.system((Resource) any())).willReturn(requestSpec);
         // requestSpec.user 호출 시 -> 계속 체이닝할 수 있게 자기 자신(requestSpec)을 돌려줘라
         // 타겟 제네릭 타입을 명시하여 모호성 에러 해결
         given(requestSpec.user(Mockito.<Consumer<ChatClient.PromptUserSpec>>any())).willAnswer(invocation -> {
             Consumer<ChatClient.PromptUserSpec> consumer = invocation.getArgument(0);
-            consumer.accept(userSpec); // 👈 람다 내부 .param() 코드를 실제로 실행시킴!
+            consumer.accept(userSpec); // 람다 내부 .param() 코드를 실제로 실행시킴!
             return requestSpec;
         });
         // requestSpec.call() 호출 시 -> 이제 응답 전용 매니저(callSpec)로 넘겨줘라

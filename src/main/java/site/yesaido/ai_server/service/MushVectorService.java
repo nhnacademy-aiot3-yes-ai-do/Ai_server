@@ -4,7 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Service;
 import org.springframework.ai.document.Document;
-import site.yesaido.ai_server.dto.MushroomCsvDto;
+import site.yesaido.ai_server.dto.ai.MushroomCsvDto;
 import site.yesaido.ai_server.exception.VectorDbException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import java.nio.charset.StandardCharsets;
