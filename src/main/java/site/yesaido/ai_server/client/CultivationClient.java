@@ -10,4 +10,3 @@ public interface CultivationClient {
     @GetMapping("/api/cultivations/{cultivation-id}")
     CultivationDetailResponse getCultivation(@PathVariable("cultivation-id") Long cultivationId);
 }
-성
