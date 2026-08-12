@@ -42,7 +42,7 @@ public class Insight {
     private BigDecimal avgLight;
 
     @Column(name = "harvest_weight_grams", nullable = false, precision = 6, scale = 2)
-    private BigDecimal harvestWeightGrams;
+    private BigDecimal harvestWeightGrams; // 수확량
 
     @Column(name = "growth_score")
     private Integer growthScore; // 환경 점수

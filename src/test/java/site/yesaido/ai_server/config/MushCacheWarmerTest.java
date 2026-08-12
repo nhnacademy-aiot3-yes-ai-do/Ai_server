@@ -12,8 +12,10 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import site.yesaido.ai_server.service.MushService;
 import java.time.Duration;
+import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.*;
 
@@ -45,7 +47,17 @@ class MushCacheWarmerTest {
         mushCacheWarmer.warming();
 
         // then
-        verify(mushService, times(5)).generateRealDataGuide(anyLong());
+        verify(mushService, times(5)).generateRealDataGuide(anyLong()); // 버섯 5종 가이드라인 생성 메서드 5회 호출 됬나 확인
+        // Redis 락 저장 시 UUID 토큰 형태와 90 TTL로 5회 요청됬나 확인
+        verify(valueOperations, times(5)).setIfAbsent(anyString(), argThat(token -> {
+            try {
+                UUID.fromString(token);
+                return true;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        }), eq(Duration.ofSeconds(90)));
+        verify(stringRedisTemplate, times(5)).execute(any(), anyList(), anyString());
     }
 
     @Test

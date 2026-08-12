@@ -4,9 +4,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import site.yesaido.ai_server.dto.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
-
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,21 +14,16 @@ public interface InsightRepository extends JpaRepository<Insight,Long> {
 
     @Query("""
         select i from Insight i
-        where i.mushroomId = :mushroomId
-            and i.avgTemperature between :minTemp and :maxTemp
-            and i.avgHumidity between :minHum and :maxHum
-            and i.avgCo2 between :minCo2 and :maxCo2
-            and i.avgLight between :minLight and :maxLight
-            and i.cultivationId not in :myCultivationIds
+        where i.mushroomId = :#{#cond.mushroomId}
+            and i.avgTemperature between :#{#cond.minTemp} and :#{#cond.maxTemp}                                                                                                                    \s
+            and i.avgHumidity between :#{#cond.minHum} and :#{#cond.maxHum}                                                                                                                         \s
+            and i.avgCo2 between :#{#cond.minCo2} and :#{#cond.maxCo2}                                                                                                                              \s
+            and i.avgLight between :#{#cond.minLight} and :#{#cond.maxLight}                                                                                                                        \s
+            and i.cultivationId not in :#{#cond.myCultivationIds}
         order by i.createdAt desc
     """)
-    List<Insight> findSimilarCandidates(
-            @Param("mushroomId") Long mushroomId,
-            @Param("minTemp") BigDecimal minTemp, @Param("maxTemp") BigDecimal maxTemp,
-            @Param("minHum") BigDecimal minHum, @Param("maxHum") BigDecimal maxHum,
-            @Param("minCo2") BigDecimal minCo2, @Param("maxCo2") BigDecimal maxCo2,
-            @Param("minLight") BigDecimal minLight, @Param("maxLight") BigDecimal maxLight,
-            @Param("myCultivationIds") List<Long> myCultivationIds,
+    List<Insight> findSimilarCandidates( // 들어가는 매개변수가 너무 많아 DTO로 포장해서 넘기느 방식으로 수정
+            @Param("cond") InsightSearchCondition condition,
             Pageable pageable
     );
 

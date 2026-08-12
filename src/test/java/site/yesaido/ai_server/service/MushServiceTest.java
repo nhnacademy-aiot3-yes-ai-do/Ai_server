@@ -1,5 +1,6 @@
 package site.yesaido.ai_server.service;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -9,6 +10,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.Resource;
+import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.dto.ai.*;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
@@ -31,6 +33,18 @@ class MushServiceTest {
 
     @InjectMocks
     private MushService mushService;
+
+    @Mock
+    private Resource systemPrompt;
+
+    @Mock
+    private Resource userPrompt;
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(mushService, "systemPrompt", systemPrompt);
+        ReflectionTestUtils.setField(mushService, "userPrompt", userPrompt);
+    }
 
     @Test
     @DisplayName("존재하지 않는 mushroomId로 조회 시 MushDataNotFoundException 발생")
