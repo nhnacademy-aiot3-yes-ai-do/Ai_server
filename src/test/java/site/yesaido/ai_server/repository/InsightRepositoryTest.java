@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.context.TestPropertySource;
 import site.yesaido.ai_server.dto.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
 import java.math.BigDecimal;
@@ -12,6 +13,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+// CI/CD 환경에서 테스트용 테이블을 자동으로 생성하고 끝나면 삭제하도록 덮어쓰기
+@TestPropertySource(properties = { "spring.jpa.hibernate.ddl-auto=create-drop"})
 class InsightRepositoryTest {
     @Autowired
     private InsightRepository insightRepository;
