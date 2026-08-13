@@ -1,5 +1,7 @@
 package site.yesaido.ai_server.service;
 
+
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,8 +10,9 @@ import site.yesaido.ai_server.dto.insight.InsightCandidateResponse;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Disabled("Cultivation_server와 실제 DB가 필요한 통합 테스트")
 @SpringBootTest
-class InsightIntegrationTest {
+class InsightIntegrationTest { //
     @Autowired
     private InsightService insightService;
 
