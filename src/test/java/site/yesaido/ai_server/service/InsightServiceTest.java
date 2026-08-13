@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -88,7 +89,7 @@ class InsightServiceTest {
 
         lenient().when(chatClient.prompt()).thenReturn(requestSpec);
         lenient().when(requestSpec.system((org.springframework.core.io.Resource) any())).thenReturn(requestSpec);
-        lenient().when(requestSpec.user(any(Consumer.class))).thenAnswer(invocation -> {
+        lenient().when(requestSpec.user(ArgumentMatchers.<Consumer<ChatClient.PromptUserSpec>>any())).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked") // getArgument 버전 이슈를 방지하기 위해 배열 직접 접근으로 바꿈
             Consumer<ChatClient.PromptUserSpec> consumer = (Consumer<ChatClient.PromptUserSpec>) invocation.getArguments()[0];
             consumer.accept(userSpec);
