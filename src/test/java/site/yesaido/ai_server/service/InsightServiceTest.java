@@ -165,7 +165,7 @@ class InsightServiceTest {
 
         insightService.saveHarvestInsight(1L, 100L);
         verify(insightRepository).save(argThat(insight ->
-                insight.getHarvestWeightGrams().compareTo(new BigDecimal("9999.99")) <= 0));
+                insight.getHarvestWeightGrams().compareTo(new BigDecimal("9999.99")) == 0));
 
     }
 

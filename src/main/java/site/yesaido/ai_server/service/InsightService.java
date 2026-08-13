@@ -43,7 +43,8 @@ public class InsightService {
 
     // 수확 완료 시 Insight 적재(아직 환경 유지율 점수, 전체 평균 센서 값 못가져와서 임시로 작성)
     public InsightCandidateResponse saveHarvestInsight(Long cultivationId, Long userId) {
-        Optional<Insight> existingInsight = insightRepository.findByCultivationId(cultivationId); // 이미 적재된 cultivationId인지 DB 조회
+        InsightRepository repository = Objects.requireNonNull(insightRepository);
+        Optional<Insight> existingInsight = repository.findByCultivationId(cultivationId); // 이미 적재된 cultivationId인지 DB 조회
 
         if (existingInsight.isPresent()) {
             log.info("이미 적재된 인사이트가 존재하여 기존 데이터를 반환합니다. (cultivationId={})", cultivationId);
@@ -52,14 +53,18 @@ public class InsightService {
         log.info("신규 Insight 사전 적재를 시작합니다. (cultivationId={})", cultivationId);
 
         // Cultivation_server에서 기본 정보(버섯 ID) 가져오기
-        CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
+        CultivationClient client = Objects.requireNonNull(cultivationClient);
+        CultivationDetailResponse cultivation = client.getCultivation(userId, cultivationId);
         // Cultivation_server에서 수확량(g) 가져오기
         HarvestDetailResponse harvest = cultivationClient.getHarvest(cultivationId, userId);
 
         // 수확 정보 방어 로직 (Null 방지)
         BigDecimal harvestWeight = (harvest != null && harvest.harvestWeight() != null)
                 ? harvest.harvestWeight() : new BigDecimal("350.00");
-
+        // signum() : 음수 -1, 0 0, 양수 1 반환
+        if (harvestWeight.signum() < 0) { // BigDecimal이라 < 비교 사용 못해 signum() 사용
+            throw new IllegalArgumentException("수확량이 음수입니다.");
+        }
         // 키트 하나를 cultivation 1개를 기준으로 하니 수확량 최대치 10kg로 수치 넉넉하게 줬지만 그것보다 큰 이상치 값 들어왔을 때 상한 방어 코드 추가
         if(harvestWeight.compareTo(new BigDecimal("9999.99")) > 0){
             harvestWeight = new BigDecimal("9999.99");
@@ -82,7 +87,8 @@ public class InsightService {
 
         Long mushroomId = (cultivation != null && cultivation.mushroomId() != null) ? cultivation.mushroomId() : 1L;
         // MushroomCsvReader 이용해 mushroomId에 해당하는 버섯 이름 가져오기
-        String mushroomName = mushCsvReader.readMushroomCsv().stream()
+        MushCsvReader csvReader = Objects.requireNonNull(mushCsvReader);
+        String mushroomName = csvReader.readMushroomCsv().stream()
                 .filter(dto -> dto.mushroomId().equals(mushroomId))
                 .map(MushroomCsvDto::mushroomName)
                 .findFirst()
@@ -112,7 +118,8 @@ public class InsightService {
     public InsightCandidateResponse saveInsight(Insight insight) {
 
         // AI 서버의 PostgreSQL DB에 저장 후 응답 DTO로 변환하여 리턴
-        Insight saved = insightRepository.save(insight); // SimpleJpaRepository 안에 @Transactional 기본으로 적용되어 있음
+        InsightRepository repository = Objects.requireNonNull(insightRepository);
+        Insight saved = repository.save(insight); // SimpleJpaRepository 안에 @Transactional 기본으로 적용되어 있음
         log.info("Insight 신규 사전 적재 완료! (insightId={})", saved.getId());
         return InsightCandidateResponse.from(saved);
     }
@@ -123,7 +130,8 @@ public class InsightService {
             BigDecimal weight, Integer score
     ){
         try{
-            return chatClient.prompt()
+            ChatClient client = Objects.requireNonNull(chatClient);
+            return client.prompt()
                     .system(systemPrompt)
                     .user(u -> u.text(userPrompt)
                             .param("mushroomName", mushroomName)
@@ -173,8 +181,8 @@ public class InsightService {
                 minLight, maxLight,
                 myCultivationIds
         );
-
-        List<Insight> candidates = insightRepository.findSimilarCandidates(
+        InsightRepository repository = Objects.requireNonNull(insightRepository);
+        List<Insight> candidates = repository.findSimilarCandidates(
                 condition,
                 PageRequest.of(0, 5) // 최신순 상위 5개만 가져오도록 지정
         );
@@ -190,7 +198,8 @@ public class InsightService {
         if (userId == null) return List.of(-1L);
         try {
             // 내 재배 ID 리스트를 가져오기
-            List<Long> ids = cultivationClient.getUserCultivationIds(userId);
+            CultivationClient client = Objects.requireNonNull(cultivationClient);
+            List<Long> ids = client.getUserCultivationIds(userId);
 
             if(ids == null){
                 return List.of(-1L);

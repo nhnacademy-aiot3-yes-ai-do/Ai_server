@@ -17,6 +17,7 @@ import site.yesaido.ai_server.service.MushService;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -76,13 +77,13 @@ public class MushCacheWarmer {
 
         // 뭉쳐진 데이터를 하나씩 꺼내서 확인 및 AI 호출
         for (long mushroomId = 1L; mushroomId <= 5L; mushroomId++) { // 버섯 5종류 고정이니 명시적인 반복문 사용
-            final long currentMushroomId = mushroomId;
+
             try{
                 // Redis에서 찾을 Key를 명세서 규격('3:guide")으로 조립
-                String cacheKey = currentMushroomId + ":guide";
+                String cacheKey = mushroomId + ":guide";
 
                 if (guideCache != null && guideCache.get(cacheKey) != null) {
-                    log.info("이미 Redis에 'mushroomId: {}' 가이드라인이 존재합니다.", currentMushroomId);
+                    log.info("이미 Redis에 'mushroomId: {}' 가이드라인이 존재합니다.", mushroomId);
                     continue;
                 }
                 /*
@@ -93,16 +94,16 @@ public class MushCacheWarmer {
                 문제 : 모든 인스턴스가 락 값으로 "LOCKED"를 사용하여 소유자를 구분 못하는 문제가 있어 타인이 새 락까지 삭제해버리는 문제 발생
                 [해결책] "LOCKED" 대신 인스턴스마다 다른 UUID 생성
                  */
-                String lockKey = "ai:mushroom:lock:" + currentMushroomId;
+                String lockKey = "ai:mushroom:lock:" + mushroomId;
                 String uuid = UUID.randomUUID().toString();
                 Duration lockTimeout = Duration.ofSeconds(90);
                 Boolean isLocked = stringRedisTemplate.opsForValue()
                         .setIfAbsent(lockKey, uuid, lockTimeout);
 
                 if (Boolean.TRUE.equals(isLocked)) {
-                    generateWithLock(currentMushroomId, lockKey, uuid, lockTimeout);
+                    generateWithLock(mushroomId, lockKey, uuid, lockTimeout, guideCache, cacheKey);
                 } else {
-                    log.info("다른 서버 인스턴스가 ID: {} 생성 작업을 선점했습니다. (Skip)", currentMushroomId);
+                    log.info("다른 서버 인스턴스가 ID: {} 생성 작업을 선점했습니다. (Skip)", mushroomId);
                 }
 
                 apiDelay();
@@ -116,28 +117,32 @@ public class MushCacheWarmer {
         log.info("5종 버섯 데이터 Redis 검증 및 적재 완료! 총 소요 시간: {} 초", totalTime);
     }
 
-    private void generateWithLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-        try { // AI 작업이 오래 걸릴 수 있으므로 30초마다 락 TTL을 갱신
-            scheduler.scheduleAtFixedRate(() -> renewLock(
-                            mushroomId, lockKey, uuid, lockTimeout), 30, 30, TimeUnit.SECONDS);
-
+    /**
+     * guideCache, cacheKey 추가해서 락 획득 후 캐시 재확인 과정을 추가해서 캐시 확인 -> 락 획득 사이에 다른 인스턴스가 캐시 저장 했는데 또 AI 호출하는 문제 해결
+     * Objects.requireNonNull() : 값 null인지 확인하고 null이면 즉시 NullPointerException을 발생시킴
+     */
+    private void generateWithLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout, Cache guideCache, String cacheKey) {
+        // try-with-resources가 작업 종료 후 scheduler를 자동 종료
+        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) { // AI 작업이 오래 걸릴 수 있으므로 30초마다 락 TTL을 갱신
+            if(guideCache != null && guideCache.get(cacheKey) != null) {
+                log.info("락 획득 후 기존 가이드를 확인했습니다. (ID: {})", mushroomId);
+                return;
+            }
+            scheduler.scheduleAtFixedRate(() -> renewLock(mushroomId, lockKey, uuid, lockTimeout), 0, 30, TimeUnit.SECONDS);
             log.info("캐시 없음. 락 획득 (ID: {}) AI 가이드라인 생성 시작...",mushroomId);
-
-            mushService.generateRealDataGuide(mushroomId);
-
+            MushService service = Objects.requireNonNull(mushService);
+            service.generateRealDataGuide(mushroomId);
         } finally { // Lua 사용하여 Redis에서 작업 끊기지 않고 처리
-            //AI 작업이 끝나면 TTL 갱신을 중단
-            scheduler.shutdownNow();
             // 내 UUID와 일치할 때만 락을 삭제
-            stringRedisTemplate.execute(RELEASE_LOCK_SCRIPT, Collections.singletonList(lockKey), uuid);
+            StringRedisTemplate redis = Objects.requireNonNull(stringRedisTemplate);
+            redis.execute(RELEASE_LOCK_SCRIPT, Collections.singletonList(lockKey), uuid);
         }
     }
 
     private void renewLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout) {
         try {
-            Long renewed = stringRedisTemplate.execute(RENEW_LOCK_SCRIPT, Collections.singletonList(lockKey),
+            StringRedisTemplate redis = Objects.requireNonNull(stringRedisTemplate);
+            Long renewed = redis.execute(RENEW_LOCK_SCRIPT, Collections.singletonList(lockKey),
                     uuid, String.valueOf(lockTimeout.getSeconds())
             );
 
