@@ -21,6 +21,9 @@ import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import site.yesaido.ai_server.repository.InsightRepository;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -56,7 +59,47 @@ public class InsightService {
         CultivationClient client = Objects.requireNonNull(cultivationClient);
         CultivationDetailResponse cultivation = client.getCultivation(userId, cultivationId);
         // Cultivation_server에서 수확량(g) 가져오기
-        HarvestDetailResponse harvest = cultivationClient.getHarvest(cultivationId, userId);
+        HarvestDetailResponse harvest = client.getHarvest(cultivationId, userId);
+
+        LocalDateTime startedAt =
+                cultivation != null ? cultivation.startedAt() : null;
+
+        LocalDateTime harvestedAt =
+                harvest != null ? harvest.harvestedAt() : null;
+
+        if (startedAt != null
+                && harvestedAt != null
+                && harvestedAt.isBefore(startedAt)) {
+            throw new IllegalArgumentException(
+                    "수확일은 재배 시작일보다 빠를 수 없습니다."
+            );
+        }
+
+        String startedAtText =
+                startedAt != null
+                        ? startedAt.toLocalDate().toString()
+                        : "정보 없음";
+
+        String harvestedAtText =
+                harvestedAt != null
+                        ? harvestedAt.toLocalDate().toString()
+                        : "정보 없음";
+
+        String cultivationPeriod = "재배 기간 정보 없음";
+
+        if (startedAt != null && harvestedAt != null) {
+            Duration duration = Duration.between(
+                    startedAt.atZone(ZoneId.of("Asia/Seoul")),
+                    harvestedAt.atZone(ZoneId.of("Asia/Seoul")));
+
+            cultivationPeriod = String.format(
+                    "%d일 %d시간 %d분",
+                    duration.toDays(),
+                    duration.toHoursPart(),
+                    duration.toMinutesPart()
+            );
+        }
+
 
         // 수확 정보 방어 로직 (Null 방지)
         BigDecimal harvestWeight = (harvest != null && harvest.harvestWeight() != null)
@@ -96,7 +139,8 @@ public class InsightService {
 
         // Insight 요약문 생성
         String summary = summaryGemini(
-                mushroomName, sensorDataText, harvestWeight, growthScore
+                mushroomName, sensorDataText, harvestWeight, growthScore,
+                startedAtText, harvestedAtText, cultivationPeriod
         );
 
         Insight insight = Insight.builder()
@@ -127,7 +171,8 @@ public class InsightService {
     // Gemini로 insight 요약
     private String summaryGemini(
             String mushroomName, String sensorDataText,
-            BigDecimal weight, Integer score
+            BigDecimal weight, Integer score, String startedAtText,
+            String harvestedAtText, String cultivationPeriod
     ){
         try{
             ChatClient client = Objects.requireNonNull(chatClient);
@@ -137,12 +182,26 @@ public class InsightService {
                             .param("mushroomName", mushroomName)
                             .param("sensorDataText", sensorDataText)
                             .param("harvestWeight", weight)
-                            .param("growthScore", score))
+                            .param("growthScore", score)
+                            .param("startedAt", startedAtText)
+                            .param("harvestedAt", harvestedAtText)
+                            .param("cultivationPeriod", cultivationPeriod)
+                    )
+
                     .call()
                     .content();
         } catch (Exception e) {
             log.warn("Gemini 요약 생성 실패, 기본 템플릿으로 대체합니다.", e);
-            return String.format("%s 품종을 평균 환경에서 재배하여 약 %.0fg 수확했습니다.", mushroomName, weight);
+            return String.format(
+                    "%s를 %s부터 %s까지 총 %s 동안 재배해 평균 온도 20.50℃, 습도 80.00%%, CO2 750.00ppm, " +
+                            "조도 100.00lx 환경에서 %d점의 환경 유지 점수와 약 %.0fg의 수확량을 기록했습니다.",
+                    mushroomName,
+                    startedAtText,
+                    harvestedAtText,
+                    cultivationPeriod,
+                    score,
+                    weight
+            );
         }
     }
 

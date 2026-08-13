@@ -12,18 +12,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @Disabled("Cultivation_server와 실제 DB가 필요한 통합 테스트")
 @SpringBootTest
-class InsightIntegrationTest { //
+class InsightIntegrationTest {
     @Autowired
     private InsightService insightService;
 
     @Test
     @DisplayName("OpenFeign + Gemini + PostgreSQL 적재 통합 테스트")
     void  IntegrationTest(){
-        InsightCandidateResponse response = insightService.saveHarvestInsight(2L, 4L);
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 4L);
 
         assertNotNull(response);
         assertNotNull(response.insightId());
-        assertEquals(2L, response.cultivationId());
+        assertEquals(1L, response.cultivationId());
         assertNotNull(response.summary());
         assertFalse(response.summary().isBlank());
 

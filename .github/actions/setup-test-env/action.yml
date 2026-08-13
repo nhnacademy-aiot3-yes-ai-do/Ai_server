@@ -5,6 +5,7 @@ runs:
   steps:
     - shell: bash
       run: |
+        # postgreSQL
         echo "DB_HOST=localhost" >> "$GITHUB_ENV"
         echo "DB_PORT=5432" >> "$GITHUB_ENV"
         echo "DB_NAME=testdb" >> "$GITHUB_ENV"
@@ -12,6 +13,13 @@ runs:
         echo "DB_PASSWORD=test1234" >> "$GITHUB_ENV"
         echo "AI_DB_SCHEMA=public" >> "$GITHUB_ENV"
         
+        # Redis
         echo "REDIS_HOST=localhost" >> "$GITHUB_ENV"                                                                                                                                                 
         echo "REDIS_PORT=6379" >> "$GITHUB_ENV"                                                                                                                                                      
         echo "REDIS_PASSWORD=" >> "$GITHUB_ENV"
+        
+        # RabbitMQ
+        echo "RABBITMQ_HOST=localhost" >> "$GITHUB_ENV"
+        echo "RABBITMQ_PORT=5672" >> "$GITHUB_ENV"
+        echo "RABBITMQ_USERNAME=test" >> "$GITHUB_ENV"
+        echo "RABBITMQ_PASSWORD=test1234" >> "$GITHUB_ENV"
