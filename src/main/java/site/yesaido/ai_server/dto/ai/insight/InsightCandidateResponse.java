@@ -1,12 +1,11 @@
-package site.yesaido.ai_server.dto.insight;
+package site.yesaido.ai_server.dto.ai.insight;
 
 import site.yesaido.ai_server.entity.Insight;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 
-public record InsightDetailResponse(
+public record InsightCandidateResponse(
         Long insightId,
         Long cultivationId,
         Long mushroomId,
@@ -17,21 +16,10 @@ public record InsightDetailResponse(
         BigDecimal harvestWeightGrams,
         Integer growthScore,
         String summary,
-        LocalDateTime createdAt,
-        List<DailyRecordDto> dailyRecords
+        LocalDateTime createdAt
 ) {
-    public record DailyRecordDto(
-            int dayNumber,
-            String date,
-            BigDecimal avgTemperature,
-            BigDecimal avgHumidity,
-            BigDecimal avgCo2,
-            BigDecimal avgLight,
-            String dailyFeedback
-    ) {}
-
-    public static InsightDetailResponse of(Insight insight, List<DailyRecordDto> dailyRecords) {
-        return new InsightDetailResponse(
+    public static InsightCandidateResponse from(Insight insight) {
+        return new InsightCandidateResponse(
                 insight.getId(),
                 insight.getCultivationId(),
                 insight.getMushroomId(),
@@ -42,8 +30,7 @@ public record InsightDetailResponse(
                 insight.getHarvestWeightGrams(),
                 insight.getGrowthScore(),
                 insight.getSummary(),
-                insight.getCreatedAt(),
-                dailyRecords
+                insight.getCreatedAt()
         );
     }
 }

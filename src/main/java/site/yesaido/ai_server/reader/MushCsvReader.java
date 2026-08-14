@@ -6,7 +6,7 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
-import site.yesaido.ai_server.dto.ai.MushroomCsvDto;
+import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.exception.CsvLoadException;
 
 import java.io.IOException;

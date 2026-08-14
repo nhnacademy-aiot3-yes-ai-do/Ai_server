@@ -10,8 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-import site.yesaido.ai_server.dto.ai.MushGuideResponse;
-import site.yesaido.ai_server.dto.ai.MushroomCsvDto;
+import site.yesaido.ai_server.dto.ai.mush_summary.MushGuideResponse;
+import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 

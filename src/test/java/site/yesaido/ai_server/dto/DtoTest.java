@@ -2,7 +2,7 @@ package site.yesaido.ai_server.dto;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import site.yesaido.ai_server.dto.ai.*;
+import site.yesaido.ai_server.dto.ai.mush_summary.*;
 
 import java.util.List;
 
