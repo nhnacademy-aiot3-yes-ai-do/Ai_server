@@ -43,7 +43,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("500  VectorDbException 예외 처리 핸들러 테스트")
+    @DisplayName("500 VectorDbException 예외 처리 핸들러 테스트")
     void handleVectorDbException() {
         VectorDbException exception = new VectorDbException(new RuntimeException("파일 에러"));
         ErrorResponse response = handler.handleVectorDbException(exception);
@@ -74,4 +74,16 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getDetail()).isEqualTo("서버 내부에 오류가 발생했습니다.");
     }
-}
+
+    @Test
+    @DisplayName("400 InvalidEvaluationRange 예외 처리 핸들러 테스트")
+    void handleInvalidEvaluationRangeExceptionTest() {
+        InvalidEvaluationRangeException exception = new InvalidEvaluationRangeException("difficultyLevel", 6);
+        ErrorResponse response = handler.handleInvalidEvaluationRangeException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).contains("difficultyLevel");
+    }
+
+    }

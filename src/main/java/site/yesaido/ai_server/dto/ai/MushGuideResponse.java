@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto;
+package site.yesaido.ai_server.dto.ai;
 
 import java.util.List;
 

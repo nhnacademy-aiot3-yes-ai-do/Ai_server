@@ -10,20 +10,22 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import site.yesaido.ai_server.service.MushService;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 /*
-변경 사항
-[기존 방식]
-서버 A 켜짐 ──> 1번 실패시 ──> (종료! 2~5번 시도조차 못함)
-서버 A, B 동시에 켜짐 ──> 둘 다 동시에 Gemini API 5번 호출! (중복/비용 폭발)
-
-[개선 방식]
-서버 A 켜짐 ──> 1번 실패시 ──> 에러 로그만 남기고 2~5번 계속 진행!
-서버 A, B 동시에 켜짐 ──> Redis SETNX 락 선점한 1대만 AI 호출, 나머지는 Skip!
+서버 A, B 동시에 켜짐
+-> Redis 락을 선점한 인스턴스가 우선 AI 호출
+-> 다른 인스턴스의 중복 생성을 줄임
  */
 
 /**
@@ -37,15 +39,32 @@ import java.time.Duration;
 @NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 public class MushCacheWarmer {
     private final MushService mushService;
-    // MushService 파라미터로 mushroomId 하나만 받고 스스로 CSV를 읽을 수 있게 변경되어 워머에서 CSV 읽고 HashMap 묶고 데이터 합치던 과정 필요 없어짐
     private final CacheManager cacheManager; // Redis 창고 관리자 주입
     private final StringRedisTemplate stringRedisTemplate; // 분산 락 적용을 위해 추가
+    /*
+    if 대신 Redis Lua 스크립트 사용 이유
+    Lua를 쓰면 Redis 서버가 스크립트를 실행하는 동안 다른 어떠 명령도 중간에 끼어들지 못하게 하여 원자성이 보장됨
+    */
+    // 내 UUID일 때만 삭제
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT =
+            new DefaultRedisScript<>(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                            "return redis.call('del', KEYS[1]) " +
+                            "else return 0 end",
+                    Long.class
+            );
+    // 내 UUID일 때만 TTL 갱신
+    private static final DefaultRedisScript<Long> RENEW_LOCK_SCRIPT =
+            new DefaultRedisScript<>(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+                            "return redis.call('expire', KEYS[1], ARGV[2]) " +
+                            "else return 0 end",
+                    Long.class
+            );
 
-    @Async("taskExecutor") // 서버 켜질 때 실행되는데 기본 설정이 동기로 동작이라 AI 요약 작성하는 워머 작업 끝날 때까지(10초) 사용자 접속을 못받아 서버 켜지는데 걸리는 시간이 길어짐
-    // K8s 환경에서는 서버 켜지는데 오래걸리면 무한 재시작 시켜버리는 문제가 있어 백그라운드로 작업할 수 있게 비동기로 처리로 변경
+    @Async("taskExecutor") // K8s 환경에서는 서버 켜지는데 오래걸리면 무한 재시작 시켜버리는 문제가 있어 백그라운드로 작업할 수 있게 비동기로 처리로 변경
     @EventListener(ApplicationReadyEvent.class) // 스프링부트 서버가 완전히 켜지고 나면 외부 요청이 없어이 자동으로 이 메서드를 1회 실행
     public void warming() {
-        // @RequiredArgsConstructor(onConstructor_ = {@Autowired})가 있어서 실제로는 의존성 주입이 잘 되지만
         // @NoArgsConstructor(force = true)가 있어서 final 필드 값이 null 들어갈 수 있다는 경고 메시지가 떠서  null 방어 코드 추가
         if (cacheManager == null || stringRedisTemplate == null || mushService == null) {
             log.warn("캐시 워밍 실패: 의존성 주입 객체가 null입니다.");
@@ -58,33 +77,31 @@ public class MushCacheWarmer {
 
         // 뭉쳐진 데이터를 하나씩 꺼내서 확인 및 AI 호출
         for (long mushroomId = 1L; mushroomId <= 5L; mushroomId++) { // 버섯 5종류 고정이니 명시적인 반복문 사용
+
             try{
                 // Redis에서 찾을 Key를 명세서 규격('3:guide")으로 조립
                 String cacheKey = mushroomId + ":guide";
 
-                // 캐시가 이미 존재하면 패스
                 if (guideCache != null && guideCache.get(cacheKey) != null) {
                     log.info("이미 Redis에 'mushroomId: {}' 가이드라인이 존재합니다.", mushroomId);
                     continue;
                 }
                 /*
                 수정사항 : [분산 락 적용]
-                버섯 가이드는 모든 사용자가 공통으로 조회하는 도감(참조) 데이터이므로,
-                다중 서버(K8s 파드) 환경에서 동시에 API를 중복 호출하는 비용 낭비를 막기 위해
-                Redis SETNX를 이용해 선착순 1대의 인스턴스만 AI 요약을 생성하도록 제어
+                다중 서버(K8s 파드) 환경에서 동시에 AI API를 중복 호출하는 비용 낭비를 줄이기 위해
+                Redis SETNX와 소유자 토큰을 이용해 동시에 실행되는 인스턴스의 중복 AI 생성을 줄이고 중복 요청 발생을 완화하도록 제어
+
+                문제 : 모든 인스턴스가 락 값으로 "LOCKED"를 사용하여 소유자를 구분 못하는 문제가 있어 타인이 새 락까지 삭제해버리는 문제 발생
+                [해결책] "LOCKED" 대신 인스턴스마다 다른 UUID 생성
                  */
                 String lockKey = "ai:mushroom:lock:" + mushroomId;
+                String uuid = UUID.randomUUID().toString();
+                Duration lockTimeout = Duration.ofSeconds(90);
                 Boolean isLocked = stringRedisTemplate.opsForValue()
-                        .setIfAbsent(lockKey, "LOCKED", Duration.ofSeconds(120)); // AI 요약 시키면 90초 정도 걸린걸로 기억해서 넉넉하게 2분 설정
+                        .setIfAbsent(lockKey, uuid, lockTimeout);
 
                 if (Boolean.TRUE.equals(isLocked)) {
-                    try {
-                        // 캐시가 없다면 서비스에게 ID 던져서 만들게 시킴
-                        log.info("캐시 없음. 락 획득 (ID: {}) AI 가이드라인 생성 시작...", mushroomId);
-                        mushService.generateRealDataGuide(mushroomId);
-                    } finally {
-                        stringRedisTemplate.delete(lockKey); // 작업 완료 후 락 해제
-                    }
+                    generateWithLock(mushroomId, lockKey, uuid, lockTimeout, guideCache, cacheKey);
                 } else {
                     log.info("다른 서버 인스턴스가 ID: {} 생성 작업을 선점했습니다. (Skip)", mushroomId);
                 }
@@ -99,6 +116,47 @@ public class MushCacheWarmer {
 
         log.info("5종 버섯 데이터 Redis 검증 및 적재 완료! 총 소요 시간: {} 초", totalTime);
     }
+
+    /**
+     * guideCache, cacheKey 추가해서 락 획득 후 캐시 재확인 과정을 추가해서 캐시 확인 -> 락 획득 사이에 다른 인스턴스가 캐시 저장 했는데 또 AI 호출하는 문제 해결
+     * Objects.requireNonNull() : 값 null인지 확인하고 null이면 즉시 NullPointerException을 발생시킴
+     */
+    private void generateWithLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout, Cache guideCache, String cacheKey) {
+        // try-with-resources가 작업 종료 후 scheduler를 자동 종료
+        try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) { // AI 작업이 오래 걸릴 수 있으므로 30초마다 락 TTL을 갱신
+            if(guideCache != null && guideCache.get(cacheKey) != null) {
+                log.info("락 획득 후 기존 가이드를 확인했습니다. (ID: {})", mushroomId);
+                return;
+            }
+            scheduler.scheduleAtFixedRate(() -> renewLock(mushroomId, lockKey, uuid, lockTimeout), 0, 30, TimeUnit.SECONDS);
+            log.info("캐시 없음. 락 획득 (ID: {}) AI 가이드라인 생성 시작...",mushroomId);
+            MushService service = Objects.requireNonNull(mushService);
+            service.generateRealDataGuide(mushroomId);
+        } finally { // Lua 사용하여 Redis에서 작업 끊기지 않고 처리
+            // 내 UUID와 일치할 때만 락을 삭제
+            StringRedisTemplate redis = Objects.requireNonNull(stringRedisTemplate);
+            redis.execute(RELEASE_LOCK_SCRIPT, Collections.singletonList(lockKey), uuid);
+        }
+    }
+
+    private void renewLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout) {
+        try {
+            StringRedisTemplate redis = Objects.requireNonNull(stringRedisTemplate);
+            Long renewed = redis.execute(RENEW_LOCK_SCRIPT, Collections.singletonList(lockKey),
+                    uuid, String.valueOf(lockTimeout.getSeconds())
+            );
+
+            if (Long.valueOf(1L).equals(renewed)) {
+                log.debug("ID {} 락 TTL 갱신 완료", mushroomId);
+            } else {
+                log.warn("ID {} 락 갱신 실패 또는 소유권 상실", mushroomId);
+            }
+
+        } catch (Exception e) {
+            log.warn("락 갱신 실패 (ID: {})", mushroomId, e);
+        }
+    }
+
     private void apiDelay(){ // 초당 요청 제한 걸려 서버 뻗는거 방지하기 위해 추가
         try {
             Thread.sleep(2000);
