@@ -1,0 +1,14 @@
+eureka:
+  client:
+    enabled: false
+
+vision:
+  server:
+    url: "http://vision-test.invalid"
+
+
+minio:
+  endpoint: "http://minio-test.invalid"
+  access-key: "test-access-key"
+  secret-key: "test-secret-key"
+  bucket-name: "test-bucket"
