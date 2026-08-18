@@ -13,16 +13,12 @@ import org.springframework.stereotype.Service;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.cultivation.CultivationSensorListResponse;
-import site.yesaido.ai_server.dto.cultivation.CultivationSensorResponse;
-import site.yesaido.ai_server.dto.cultivation.CultivationSensorTypeResponse;
 import site.yesaido.ai_server.dto.front.AiSensorResultDto;
 import site.yesaido.ai_server.dto.front.SensorRangeDto;
 import site.yesaido.ai_server.dto.front.SensorRecommendationRequest;
 import site.yesaido.ai_server.dto.front.SensorValidationResponse;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
