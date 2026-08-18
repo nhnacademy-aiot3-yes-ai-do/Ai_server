@@ -65,8 +65,7 @@ class InsightServiceTest {
         ReflectionTestUtils.setField(insightService, "userPrompt", userPrompt);
 
         mockCultivation = new CultivationDetailResponse(
-                1L, "맛있는 느타리", 2L, "FINISHED", "HARVEST",
-                LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now()
+                1L, 2L, "FINISHED", "HARVEST", LocalDateTime.now()
         );
         mockHarvest = new HarvestDetailResponse(
                 10L, 1L, new BigDecimal("400.00"), "맛있는 느타리",
@@ -203,6 +202,84 @@ class InsightServiceTest {
         assertThat(result).isNotNull();
         verify(insightRepository).findSimilarCandidates(
                 argThat(cond -> cond.myCultivationIds().equals(List.of(-1L))), any(Pageable.class)
+        );
+    }
+
+    @Test
+    @DisplayName("수확일이 재배 시작일보다 빠를 경우 IllegalArgumentException 발생 검증")
+    void saveInsight_HarvestDateBeforeStartDate() {
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+
+        // 시작일을 현재로, 수확일을 '어제'로 설정 (시간의 모순 발생)
+        CultivationDetailResponse wrongCultivation = new CultivationDetailResponse(
+                1L, 2L, "FINISHED", "HARVEST", LocalDateTime.now()
+        );
+        HarvestDetailResponse wrongHarvest = new HarvestDetailResponse(
+                10L, 1L, new BigDecimal("400.00"), "맛있는 느타리",
+                LocalDateTime.now().minusDays(1), new BigDecimal("90.0"), null
+        );
+
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(wrongCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(wrongHarvest);
+
+        // 예외가 잘 터지는지 콕 찔러서 확인
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            insightService.saveHarvestInsight(1L, 100L);
+        });
+    }
+
+    @Test
+    @DisplayName("수확량이 음수일 경우 IllegalArgumentException 발생 검증")
+    void saveInsight_NegativeHarvestWeight() {
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+
+        // 수확량을 말도 안 되는 -10g로 설정
+        HarvestDetailResponse negativeHarvest = new HarvestDetailResponse(
+                10L, 1L, new BigDecimal("-10.00"), "맛있는 느타리",
+                LocalDateTime.now(), new BigDecimal("90.0"), null
+        );
+
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(negativeHarvest);
+
+        // signum() < 0 분기에 걸려 예외가 터지는지 확인
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
+            insightService.saveHarvestInsight(1L, 100L);
+        });
+    }
+
+    @Test
+    @DisplayName("AI 요약(Gemini) 실패 시 catch 블록을 타서 기본 템플릿(하드코딩 문자열) 반환 검증")
+    void summaryGemini_ExceptionFallback() {
+        // AI 통신 서버가 죽었다고 강제 가정 (에러 뱉음)
+        when(chatClient.prompt()).thenThrow(new RuntimeException("Gemini 통신 완전 실패"));
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 저장될 때 받은 객체 그대로 리턴하도록 모킹
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        // catch 블록이 작동하여 "평균 온도 20.50℃..." 같은 기본 하드코딩 템플릿 문구가 반환되었는지 검증
+        assertThat(response.summary()).contains("평균 온도 20.50℃");
+    }
+
+    @Test
+    @DisplayName("내 재배 목록 조회 시 userId가 null일 경우 방어 로직(-1L 반환) 검증")
+    void getInsightCandidates_NullUserId() {
+        when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any())).thenReturn(List.of());
+
+        // 일부러 userId 자리에 null을 집어넣음
+        insightService.getInsightCandidates(
+                null, 2L,
+                new BigDecimal("20.00"), new BigDecimal("80.00"),
+                new BigDecimal("700.00"), new BigDecimal("100.00")
+        );
+
+        verify(insightRepository).findSimilarCandidates( // userId == null 방어막이 작동하여 -1L이 담겼는지 검증
+                argThat(cond -> cond.myCultivationIds().contains(-1L)), any()
         );
     }
 }

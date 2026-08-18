@@ -1,6 +1,7 @@
 package site.yesaido.ai_server.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import site.yesaido.ai_server.dto.ai.mush_summary.ApiResponse;
 import site.yesaido.ai_server.service.MushVectorService;
@@ -12,8 +13,8 @@ public class DataController {
     private final MushVectorService mushVectorService;
 
     @PostMapping("/load-vector")
-    public ApiResponse<String> loadVector() {
+    public ResponseEntity<ApiResponse<String>> loadVector() {
         String result = mushVectorService.loadCsv();
-        return ApiResponse.success(result);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 }

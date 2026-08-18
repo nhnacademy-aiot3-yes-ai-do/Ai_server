@@ -27,7 +27,7 @@ public class PhaseTransition {
         }
         // 누적 평균 환경 유지 점수 확인(1일차~오늘)
         if(environmentScoreAverage < PASS_SCORE_THRESHOLD){
-            return new ChangePhase(false, String.format("누적 평균 환경 유지 점수(%.1f).가 낮아 수확기 전환 조건이 부족합니다. (기준 : %.1f점)",
+            return new ChangePhase(false, String.format("누적 평균 환경 유지 점수(%.1f)가 낮아 수확기 전환 조건이 부족합니다. (기준 : %.1f점)",
                     environmentScoreAverage, PASS_SCORE_THRESHOLD));
         }
 
