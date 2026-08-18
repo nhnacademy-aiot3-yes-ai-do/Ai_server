@@ -1,7 +1,11 @@
 package site.yesaido.ai_server.config;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -15,9 +19,44 @@ import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
 
 import java.time.Duration;
 
+@Slf4j
 @EnableCaching // Spring Boot 캐시 전원 켜기
 @Configuration
-public class RedisCacheConfig {
+public class RedisCacheConfig implements CachingConfigurer {
+
+    /*
+     * 예전 DTO 패키지 경로(site.yesaido.ai_server.dto.ai.mush_summary.MushGuideResponse 등)로
+     * 저장된 낡은 Redis 캐시 값을 읽으려다 클래스를 못 찾아 역직렬화가 실패하는 경우,
+     * 기본 동작은 예외를 그대로 던져서 요청 자체가 500으로 죽어버림.
+     * 캐시 조회/저장/삭제 실패를 여기서 로그만 남기고 삼켜서,
+     * 캐시 미스로 취급하고 실제 메서드를 호출해 새로 생성 -> 정상 값으로 캐시를 덮어쓰도록(자가 치유) 함.
+     */
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+                log.warn("Redis 캐시 조회 실패 (cache={}, key={}) - 캐시 미스로 처리하고 새로 생성합니다: {}",
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+                log.warn("Redis 캐시 저장 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+                log.warn("Redis 캐시 삭제 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+                log.warn("Redis 캐시 전체 삭제 실패 (cache={}): {}", cache.getName(), exception.getMessage());
+            }
+        };
+    }
+
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
         // Redis 보안 처리 코드 추가
