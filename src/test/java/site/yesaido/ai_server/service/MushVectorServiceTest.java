@@ -7,7 +7,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.vectorstore.VectorStore;
-import site.yesaido.ai_server.dto.ai.MushroomCsvDto;
+import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.exception.VectorDbException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 

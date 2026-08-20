@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.ai;
+package site.yesaido.ai_server.dto.ai.mush_summary;
 /*
 제네릭 <T>를 사용해 데이터에 String, List 등 무엇이든 담을 수 있게 구현
 공통 응답 포맷 및 handler 적용

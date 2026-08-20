@@ -4,7 +4,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import site.yesaido.ai_server.dto.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
 import java.util.List;
 import java.util.Optional;

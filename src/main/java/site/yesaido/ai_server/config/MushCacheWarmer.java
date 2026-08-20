@@ -41,6 +41,7 @@ public class MushCacheWarmer {
     private final MushService mushService;
     private final CacheManager cacheManager; // Redis 창고 관리자 주입
     private final StringRedisTemplate stringRedisTemplate; // 분산 락 적용을 위해 추가
+    private long delayMs = 2000;
     /*
     if 대신 Redis Lua 스크립트 사용 이유
     Lua를 쓰면 Redis 서버가 스크립트를 실행하는 동안 다른 어떠 명령도 중간에 끼어들지 못하게 하여 원자성이 보장됨
@@ -82,7 +83,9 @@ public class MushCacheWarmer {
                 // Redis에서 찾을 Key를 명세서 규격('3:guide")으로 조립
                 String cacheKey = mushroomId + ":guide";
 
-                if (guideCache != null && guideCache.get(cacheKey) != null) {
+                boolean cacheExists = isCacheExists(guideCache, cacheKey, mushroomId);
+
+                if (cacheExists) {
                     log.info("이미 Redis에 'mushroomId: {}' 가이드라인이 존재합니다.", mushroomId);
                     continue;
                 }
@@ -124,7 +127,16 @@ public class MushCacheWarmer {
     private void generateWithLock(long mushroomId, String lockKey, String uuid, Duration lockTimeout, Cache guideCache, String cacheKey) {
         // try-with-resources가 작업 종료 후 scheduler를 자동 종료
         try (ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor()) { // AI 작업이 오래 걸릴 수 있으므로 30초마다 락 TTL을 갱신
-            if(guideCache != null && guideCache.get(cacheKey) != null) {
+            boolean cacheExists = false;
+            try {
+                if(guideCache != null && guideCache.get(cacheKey) != null) {
+                    cacheExists = true;
+                }
+            } catch (Exception e) {
+                // 역직렬화 에러 무시하고 재생성
+            }
+
+            if(cacheExists) {
                 log.info("락 획득 후 기존 가이드를 확인했습니다. (ID: {})", mushroomId);
                 return;
             }
@@ -156,12 +168,23 @@ public class MushCacheWarmer {
             log.warn("락 갱신 실패 (ID: {})", mushroomId, e);
         }
     }
-
-    private void apiDelay(){ // 초당 요청 제한 걸려 서버 뻗는거 방지하기 위해 추가
+    // 테스트 환경에서 0으로 조작하여 TimeOut을 방지하기 위해 변수로 분리
+    private void apiDelay(){
         try {
-            Thread.sleep(2000);
+            if (delayMs > 0) {
+                Thread.sleep(delayMs);
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private boolean isCacheExists(org.springframework.cache.Cache guideCache, String cacheKey, long mushroomId) {
+        try {
+            return guideCache != null && guideCache.get(cacheKey) != null;
+        } catch (Exception e) {
+            log.warn("캐시 데이터 형식이 안 맞거나 깨짐 (ID: {}) - 덮어쓰기 위해 재생성 진행", mushroomId);
+            return false;
         }
     }
 }

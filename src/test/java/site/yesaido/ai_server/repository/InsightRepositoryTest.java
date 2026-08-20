@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.TestPropertySource;
-import site.yesaido.ai_server.dto.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
 import java.math.BigDecimal;
 import java.util.List;

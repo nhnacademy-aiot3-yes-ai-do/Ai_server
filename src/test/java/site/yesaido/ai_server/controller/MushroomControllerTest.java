@@ -6,10 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import site.yesaido.ai_server.dto.ai.AiEvaluationDto;
-import site.yesaido.ai_server.dto.ai.EnvironmentConditionInfo;
-import site.yesaido.ai_server.dto.ai.MushGuideResponse;
-import site.yesaido.ai_server.dto.ai.SensorRange;
+import site.yesaido.ai_server.dto.ai.mush_summary.AiEvaluationDto;
+import site.yesaido.ai_server.dto.ai.mush_summary.EnvironmentConditionInfo;
+import site.yesaido.ai_server.dto.ai.mush_summary.MushGuideResponse;
+import site.yesaido.ai_server.dto.ai.mush_summary.SensorRange;
 import site.yesaido.ai_server.service.MushService;
 
 import java.util.List;

@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.ai;
+package site.yesaido.ai_server.dto.ai.mush_summary;
 
 public record EnvironmentConditionInfo(
         SensorRange temperature, // ex : min: 18.0, max: 24.0

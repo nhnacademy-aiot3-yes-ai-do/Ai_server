@@ -6,7 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import site.yesaido.ai_server.dto.insight.InsightCandidateResponse;
+import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 
 import static org.junit.jupiter.api.Assertions.*;
 

@@ -11,7 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.Resource;
 import org.springframework.test.util.ReflectionTestUtils;
-import site.yesaido.ai_server.dto.ai.*;
+import site.yesaido.ai_server.dto.ai.mush_summary.*;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import static org.assertj.core.api.Assertions.*;

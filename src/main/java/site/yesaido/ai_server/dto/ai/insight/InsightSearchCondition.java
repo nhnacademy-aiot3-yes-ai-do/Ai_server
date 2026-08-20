@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.insight;
+package site.yesaido.ai_server.dto.ai.insight;
 
 import java.math.BigDecimal;
 import java.util.List;
