@@ -3,7 +3,7 @@ package site.yesaido.ai_server.dto.front;
 import java.math.BigDecimal;
 
 // 프론트 요청용
-public record SensorRecommendationRequest(
+public record SensorValidationRequest(
         Long cultivationId,
         Long sensorTypeId,
         String sensorTypeName,

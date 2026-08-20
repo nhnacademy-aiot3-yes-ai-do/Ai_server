@@ -10,7 +10,7 @@ import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
 
 import java.util.List;
 
-@FeignClient(name = "cultivation-server/api/cultivations")
+@FeignClient(name = "cultivation-server", path = "/api/v1/cultivations")
 public interface CultivationClient {
     @GetMapping("/{cultivation-id}") // 재배 기본 정보(버섯 id)
     CultivationDetailResponse getCultivation(@RequestHeader("X-User-Id") Long userId,

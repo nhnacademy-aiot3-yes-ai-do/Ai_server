@@ -17,7 +17,7 @@ public class PhaseTransition {
      */
     public ChangePhase evaluate(Long mushroomId, long cultivationDays, double environmentScoreAverage, boolean hasDisease){
         if(hasDisease){
-            return new ChangePhase(false, "병충해가 발생하여 방제 또는 폐기가 필요합니다.");
+            return new ChangePhase(false, "병충해가 발생하여 폐기가 필요합니다.");
         }
         int requiredDays = getMinRequiredDays(mushroomId);
         // 버섯 종류별 최소 재배 일수 확인

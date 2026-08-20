@@ -15,7 +15,7 @@ import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
 import site.yesaido.ai_server.dto.front.AiSensorResultDto;
 import site.yesaido.ai_server.dto.front.SensorRangeDto;
-import site.yesaido.ai_server.dto.front.SensorRecommendationRequest;
+import site.yesaido.ai_server.dto.front.SensorValidationRequest;
 import site.yesaido.ai_server.dto.front.SensorValidationResponse;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
@@ -25,7 +25,7 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class SensorRecommendationService {
+public class SensorValidationService {
     private final ChatClient chatClient;
     private final CultivationClient cultivationClient;
     private final ObjectMapper objectMapper; // JAVA <-> JSON 변환기
@@ -36,13 +36,13 @@ public class SensorRecommendationService {
      */
     private final StringRedisTemplate redisTemplate;
     private final MushCsvReader mushCsvReader;
-    @Value("classpath:prompts/sensor_recommendation_system.st")
+    @Value("classpath:prompts/sensor_validation_system.st")
     private Resource systemResource;
-    @Value("classpath:prompts/sensor_recommendation_user.st")
+    @Value("classpath:prompts/sensor_validation_user.st")
     private Resource userResource;
-    private static final String REDIS_KEY =  "mushroom:sensor:recommendation:";
+    private static final String REDIS_KEY =  "mushroom:sensor:validation:";
 
-    public SensorValidationResponse validateSensorThreshold(Long userId, SensorRecommendationRequest request) {
+    public SensorValidationResponse validateSensorThreshold(Long userId, SensorValidationRequest request) {
         CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, request.cultivationId());
         String mushroomName = findMushroomName(cultivation.mushroomId());
 
@@ -117,11 +117,7 @@ public class SensorRecommendationService {
                     .filter(s -> s.sensorTypeId().equals(sensorId))
                     .toList();
 
-            List<SensorRangeDto> abs = aiResponse.absoluteLimits().stream()
-                    .filter(s -> s.sensorTypeId().equals(sensorId))
-                    .toList();
-
-            AiSensorResultDto singleSensorResult = new AiSensorResultDto(veg, harv, abs);
+            AiSensorResultDto singleSensorResult = new AiSensorResultDto(veg, harv);
 
             try {
                 String jsonResult = objectMapper.writeValueAsString(singleSensorResult);

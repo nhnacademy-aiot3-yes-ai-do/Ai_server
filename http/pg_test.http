@@ -1,2 +1,16 @@
 ### 성공 테스트(정상 호출)
 POST http://localhost:8081/api/admin/data/load-vector
+
+### 양송이버섯 센서 임계값 검증 테스트
+POST http://localhost:8081/api/ai/sensor-validation
+Content-Type: application/json
+X-User-Id: 6
+
+{
+  "cultivationId": 1,
+  "sensorTypeId": 1,
+  "sensorTypeName": "온도",
+  "sensorUnit": "℃",
+  "userMin": 21.0,
+  "userMax": 24.0
+}
