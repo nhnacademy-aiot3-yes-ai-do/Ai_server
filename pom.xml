@@ -50,34 +50,6 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-kubernetes-client</artifactId>
-        </dependency>
-        <!-- 쿠버네티스와 버전 맞추기 -->
-        <dependency>
-            <groupId>io.kubernetes</groupId>
-            <artifactId>client-java</artifactId>
-            <version>25.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>io.kubernetes</groupId>
-            <artifactId>client-java-api</artifactId>
-            <version>25.0.0</version>
-        </dependency>
-
-        <!-- 유레카와 쿠버네티스 의존성 충돌 해결을 위한 버전 고정 -->
-        <dependency>
-            <groupId>io.kubernetes</groupId>
-            <artifactId>client-java-api-fluent</artifactId>
-            <version>25.0.0</version>
-        </dependency>
-
-        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>

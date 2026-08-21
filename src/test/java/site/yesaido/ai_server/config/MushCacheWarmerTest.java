@@ -102,10 +102,12 @@ class MushCacheWarmerTest {
     @Test
     @DisplayName("락 획득 후 이중 체크 시 캐시가 이미 생성되어 있으면 조기 종료 (이중 체크 분기 검증)")
     void warming_acquiresLock_butCacheAlreadyFilled() {
+        // 메서드 인자 안에서 직접 mock()을 생성하면 검증과 디버깅할 때 추적이 어려워져 mock 객체 지역 변수로 분리 생성
+        Cache.ValueWrapper valueWrapper = mock(Cache.ValueWrapper.class);
         // 첫 번째 조회는 null(캐시 없음), 두 번째 조회(락 획득 후)는 캐시 있음(ValueWrapper) 반환
         when(cache.get(anyString()))
                 .thenReturn(null)
-                .thenReturn(mock(Cache.ValueWrapper.class));
+                .thenReturn(valueWrapper); // 변수 전달
         when(valueOperations.setIfAbsent(anyString(), anyString(), any(Duration.class))).thenReturn(true);
 
         mushCacheWarmer.warming();

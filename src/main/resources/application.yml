@@ -31,9 +31,9 @@ spring:
     redis:
       # ip 외부 : 220.67.216.14 # ip 내부 : 10.116.64.14
       host: ${REDIS_HOST:220.67.216.14}
-      port: 6379
+      port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
-      database: 311
+      database: ${REDIS_DATABASE:311}
   # AI 설정
   ai:
     vectorstore:
@@ -67,10 +67,7 @@ spring:
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
 
-eureka:
+feign:
   client:
-    enabled: ${EUREKA_ENABLED:false}
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
+    cultivation-server:
+      url: ${CULTIVATION_SERVER_URL}
