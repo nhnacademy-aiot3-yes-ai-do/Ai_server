@@ -54,6 +54,12 @@ public class GlobalExceptionHandler {
         return ErrorResponse.create(e, HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
+    @ExceptionHandler(AiAnalysisFailedException.class)
+    public ErrorResponse handleAiAnalysisFailedException(AiAnalysisFailedException e){
+        log.error("[AiAnalysisFailed] {}", e.getMessage(), e);
+        return ErrorResponse.create(e, HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+
     // 처리되지 않은 모든 예외 방어막 (500 INTERNAL_SERVER_ERROR)
     @ExceptionHandler(Exception.class)
     public ErrorResponse handleException(Exception e){

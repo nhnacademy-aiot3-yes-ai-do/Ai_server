@@ -17,6 +17,7 @@ import site.yesaido.ai_server.dto.front.AiSensorResultDto;
 import site.yesaido.ai_server.dto.front.SensorRangeDto;
 import site.yesaido.ai_server.dto.front.SensorValidationRequest;
 import site.yesaido.ai_server.dto.front.SensorValidationResponse;
+import site.yesaido.ai_server.exception.AiAnalysisFailedException;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import java.util.List;
@@ -70,7 +71,7 @@ public class SensorValidationService {
         SensorRangeDto optimal = aiData.vegetativePhase().stream()
                 .filter(s -> s.sensorTypeId().equals(request.sensorTypeId()))
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("AI failed to analyze."));
+                .orElseThrow(() -> new AiAnalysisFailedException(request.sensorTypeId()));
 
         boolean isValid = true;
         String feedbackMessage = "적절한 임계값입니다. 센서를 등록하셔도 좋습니다!";

@@ -24,6 +24,7 @@ import site.yesaido.ai_server.dto.front.AiSensorResultDto;
 import site.yesaido.ai_server.dto.front.SensorRangeDto;
 import site.yesaido.ai_server.dto.front.SensorValidationRequest;
 import site.yesaido.ai_server.dto.front.SensorValidationResponse;
+import site.yesaido.ai_server.exception.AiAnalysisFailedException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -167,8 +168,8 @@ class SensorValidationServiceTest {
                 CULTIVATION_ID, 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
-        // findFirst().orElseThrow() 에 걸려 강제로 RuntimeException이 터지는지 검증
-        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class, () -> {
+        // findFirst().orElseThrow() 에 걸려 AiAnalysisFailedException이 터지는지 검증
+        org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class, () -> {
             sensorValidationService.validateSensorThreshold(USER_ID, request);
         });
     }
