@@ -1,10 +1,13 @@
 package site.yesaido.ai_server.exception;
 
+import feign.FeignException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.ErrorResponse;
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class GlobalExceptionHandlerTest {
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
@@ -86,4 +89,18 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getDetail()).contains("difficultyLevel");
     }
 
+    @Test
+    @DisplayName("502 Bad Gateway FeignException 외부 서버 통신 실패 예외 처리 테스트")
+    void handleFeignExceptionTest() {
+        FeignException exception = mock(FeignException.class);
+        when(exception.status()).thenReturn(500);
+        when(exception.getMessage()).thenReturn("Connection refused");
+
+        ErrorResponse response = handler.handleFeignException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).contains("외부 서비스 연결이 일시적으로 원활하지 않습니다.");
     }
+
+}

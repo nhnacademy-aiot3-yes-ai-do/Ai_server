@@ -14,19 +14,23 @@ import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
+import site.yesaido.ai_server.dto.cultivation.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.cultivation.SensorTypeAverageResponse;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import site.yesaido.ai_server.repository.InsightRepository;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 @Slf4j
@@ -85,48 +89,27 @@ public class InsightService {
                         ? harvestedAt.toLocalDate().toString()
                         : "정보 없음";
 
-        String cultivationPeriod = "재배 기간 정보 없음";
+        String cultivationPeriod = calculateCultivationPeriod(startedAt, harvestedAt);
+        BigDecimal harvestWeight = getValidHarvestWeight(harvest);
 
-        if (startedAt != null && harvestedAt != null) {
-            Duration duration = Duration.between(
-                    startedAt.atZone(ZoneId.of("Asia/Seoul")),
-                    harvestedAt.atZone(ZoneId.of("Asia/Seoul")));
-
-            cultivationPeriod = String.format(
-                    "%d일 %d시간 %d분",
-                    duration.toDays(),
-                    duration.toHoursPart(),
-                    duration.toMinutesPart()
-            );
+        EnvironmentComplianceResponse compliance = null;
+        List<SensorTypeAverageResponse> sensorAverages = null;
+        try{
+            compliance = client.getEnvironmentCompliance(cultivationId, userId);
+            sensorAverages = client.getSensorValuesAverage(cultivationId, userId);
+        } catch (Exception e) {
+            log.warn("환경 유지율 조회 실패 (cultivationId={}). 기본 점수 및 기본 수치로 대체합니다.", cultivationId, e);
         }
 
+        Integer growthScore = calculateGrowthScore(compliance); // 환경 유지율 기반 성장 점수 계산
 
-        // 수확 정보 방어 로직 (Null 방지)
-        BigDecimal harvestWeight = (harvest != null && harvest.harvestWeight() != null)
-                ? harvest.harvestWeight() : new BigDecimal("350.00");
-        // signum() : 음수 -1, 0 0, 양수 1 반환
-        if (harvestWeight.signum() < 0) { // BigDecimal이라 < 비교 사용 못해 signum() 사용
-            throw new IllegalArgumentException("수확량이 음수입니다.");
-        }
-        // 키트 하나를 cultivation 1개를 기준으로 하니 수확량 최대치 10kg로 수치 넉넉하게 줬지만 그것보다 큰 이상치 값 들어왔을 때 상한 방어 코드 추가
-        if(harvestWeight.compareTo(new BigDecimal("9999.99")) > 0){
-            harvestWeight = new BigDecimal("9999.99");
-        }
+        // 실제 센서별 평균값 추출 (조회 실패 시 기본값 사용)
+        BigDecimal avgTemp = findSensorAverage(sensorAverages, "TEMPERATURE", new BigDecimal("20.50"));
+        BigDecimal avgHum  = findSensorAverage(sensorAverages, "HUMIDITY", new BigDecimal("80.00"));
+        BigDecimal avgCo2  = findSensorAverage(sensorAverages, "CO2", new BigDecimal("750.00"));
+        BigDecimal avgLight= findSensorAverage(sensorAverages, "LIGHT", new BigDecimal("100.00"));
 
-        // 테스트용 수치 데이터 (Cultivation 센서 API 완성 전까지 사용)
-        BigDecimal avgTemp = new BigDecimal("20.50");
-        BigDecimal avgHum  = new BigDecimal("80.00");
-        BigDecimal avgCo2  = new BigDecimal("750.00");
-        BigDecimal avgLight= new BigDecimal("100.00");
-        Integer growthScore = 85;
-        // 센서 4개 말고도 다른게 추가될 수 있게 수정되서 인사이트 요약할 때 등록된 센서 List 가져와 요약할 수 있게 수정
-        StringBuilder sensorTextBuilder = new StringBuilder();
-
-        sensorTextBuilder.append(" - 평균 온도: 20.50℃\n")
-                .append(" - 평균 습도: 80.00%\n")
-                .append(" - 평균 CO2: 750.00ppm\n")
-                .append(" - 평균 조도: 100.00lx\n");
-        String sensorDataText  =  sensorTextBuilder.toString();
+        String sensorDataText = buildSensorDataText(sensorAverages, compliance);
 
         Long mushroomId = (cultivation != null && cultivation.mushroomId() != null) ? cultivation.mushroomId() : 1L;
         // MushroomCsvReader 이용해 mushroomId에 해당하는 버섯 이름 가져오기
@@ -273,6 +256,103 @@ public class InsightService {
             return List.of(-1L);
         }
     }
+
+    private Integer calculateGrowthScore(EnvironmentComplianceResponse compliance){
+        if (compliance == null) return 80;
+
+        List<BigDecimal> score = Stream.of(
+                compliance.temperatureCompliance(),
+                compliance.humidityCompliance(),
+                compliance.co2Compliance(),
+                compliance.lightCompliance()
+        ).filter(Objects::nonNull).toList(); // null 값 걸러내기
+        if(score.isEmpty()) return 80;
+        // 센서 유지율 평균 계산(반올림)
+        BigDecimal sum = score.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(score.size()), 0, RoundingMode.HALF_UP).intValue();
+    }
+
+    // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 기본값 사용)
+    private BigDecimal findSensorAverage(List<SensorTypeAverageResponse> list, String sensorType, BigDecimal defaultVal){
+        if(list == null) return defaultVal;
+        return list.stream()
+                .filter(s -> sensorType.equalsIgnoreCase(s.sensorType()) && s.averageValue() != null)
+                .map(s -> BigDecimal.valueOf(s.averageValue()).setScale(2, RoundingMode.HALF_UP))
+                .findFirst().orElse(defaultVal);
+    }
+
+    // 재배 기간 계산 분리
+    private String calculateCultivationPeriod(LocalDateTime startedAt, LocalDateTime harvestedAt) {
+        if (startedAt == null || harvestedAt == null) {
+            return "재배 기간 정보 없음";
+        }
+        Duration duration = Duration.between(
+                startedAt.atZone(ZoneId.of("Asia/Seoul")),
+                harvestedAt.atZone(ZoneId.of("Asia/Seoul")));
+
+        return String.format("%d일 %d시간 %d분", duration.toDays(), duration.toHoursPart(), duration.toMinutesPart());
+    }
+
+    // 수확량 검증 분리
+    private BigDecimal getValidHarvestWeight(HarvestDetailResponse harvest) {
+        BigDecimal harvestWeight = (harvest != null && harvest.harvestWeight() != null)
+                ? harvest.harvestWeight() : new BigDecimal("350.00");
+
+        if (harvestWeight.signum() < 0) {
+            throw new IllegalArgumentException("수확량이 음수입니다.");
+        }
+        if (harvestWeight.compareTo(new BigDecimal("9999.99")) > 0) {
+            return new BigDecimal("9999.99");
+        }
+        return harvestWeight;
+    }
+
+    // 센서 및 유지율 텍스트 빌더 분리
+    private String buildSensorDataText(List<SensorTypeAverageResponse> sensorAverages, EnvironmentComplianceResponse compliance) {
+        StringBuilder sb = new StringBuilder();
+        appendSensorAverages(sb, sensorAverages);
+        appendCompliance(sb, compliance);
+
+        if (sb.isEmpty()) {
+            sb.append(" - 평균 온도: 20.50℃\n")
+                    .append(" - 평균 습도: 80.00%\n")
+                    .append(" - 평균 CO2: 750.00ppm\n")
+                    .append(" - 평균 조도: 100.00lx\n");
+        }
+        return sb.toString();
+    }
+
+    // 센서 평균값 분리
+    private void appendSensorAverages(StringBuilder sb, List<SensorTypeAverageResponse> sensorAverages) {
+        if (sensorAverages == null || sensorAverages.isEmpty()) {
+            return;
+        }
+        for (SensorTypeAverageResponse s : sensorAverages) {
+            if (s.averageValue() != null) {
+                sb.append(String.format(" - 평균 %s: %.2f%s%n", s.sensorType(), s.averageValue(), s.unit()));
+            }
+        }
+    }
+
+    // 2) 유지율 분리
+    private void appendCompliance(StringBuilder sb, EnvironmentComplianceResponse compliance) {
+        if (compliance == null) {
+            return;
+        }
+        if (compliance.temperatureCompliance() != null) {
+            sb.append(String.format(" - 온도 적정 유지율: %.2f%%%n", compliance.temperatureCompliance()));
+        }
+        if (compliance.humidityCompliance() != null) {
+            sb.append(String.format(" - 습도 적정 유지율: %.2f%%%n", compliance.humidityCompliance()));
+        }
+        if (compliance.co2Compliance() != null) {
+            sb.append(String.format(" - CO2 적정 유지율: %.2f%%%n", compliance.co2Compliance()));
+        }
+        if (compliance.lightCompliance() != null) {
+            sb.append(String.format(" - 조도 적정 유지율: %.2f%%%n", compliance.lightCompliance()));
+        }
+    }
+
 
 
     // 인사이트 상세 조회(일일 피드백 완성 후 5개 중 하나 눌렀을 때 일일 피드백 기록 보여주는 기능 구현)

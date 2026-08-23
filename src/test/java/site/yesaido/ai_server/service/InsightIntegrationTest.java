@@ -19,11 +19,11 @@ class InsightIntegrationTest {
     @Test
     @DisplayName("OpenFeign + Gemini + PostgreSQL 적재 통합 테스트")
     void  IntegrationTest(){
-        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 4L);
+        InsightCandidateResponse response = insightService.saveHarvestInsight(15L, 100L);
 
         assertNotNull(response);
         assertNotNull(response.insightId());
-        assertEquals(1L, response.cultivationId());
+        assertEquals(15L, response.cultivationId());
         assertNotNull(response.summary());
         assertFalse(response.summary().isBlank());
 

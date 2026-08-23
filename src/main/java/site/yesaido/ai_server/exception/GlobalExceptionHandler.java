@@ -1,5 +1,6 @@
 package site.yesaido.ai_server.exception;
 
+import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -67,9 +68,17 @@ public class GlobalExceptionHandler {
         return ErrorResponse.create(e, HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부에 오류가 발생했습니다.");
     }
 
+    // 외부 서비스 통신 실패 에외 처리
+    @ExceptionHandler(FeignException.class)
+    public ErrorResponse handleFeignException(FeignException e) {
+        log.error("[Feign Communication Error] 외부 서버 통신 실패 (Status: {}): {}", e.status(), e.getMessage());
+        return ErrorResponse.create(e, HttpStatus.BAD_GATEWAY, "외부 서비스 연결이 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요.");
+    }
+
     // 탭 아이콘 없어서 생기는 파비콘(favicion.ico) 에러 별도 처리해서 조용히 넘기
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Void> handleNoResourceFound() {
         return ResponseEntity.notFound().build();
     }
+
 }

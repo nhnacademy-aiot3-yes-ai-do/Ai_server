@@ -4,9 +4,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
-import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.cultivation.CultivationSensorListResponse;
-import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
+import site.yesaido.ai_server.dto.cultivation.*;
 
 import java.util.List;
 
@@ -30,9 +28,21 @@ public interface CultivationClient {
     CultivationSensorListResponse getAllCultivationSensor(@RequestHeader("X-User-Id") Long userId,
                                                           @PathVariable("cultivation-id") Long cultivationId);
 
-    // 전체 기간 센서 평균값 조회(Cultivation에 코드 수정중이라 보류) 숫자만 들어오는게 아니 온도면 20℃ 이렇게 들어옴?
+    // 환경 유지율 평균 조회
+    @GetMapping("/{cultivation-id}/environment-compliance")
+    EnvironmentComplianceResponse getEnvironmentCompliance(
+            @PathVariable("cultivation-id") Long cultivationId,
+            @RequestHeader("X-User-Id") Long userId
+    );
+
+    // 센서 평균값 조회
+    @GetMapping("/{cultivation-id}/sensor-values/average")
+    List<SensorTypeAverageResponse> getSensorValuesAverage(
+            @PathVariable("cultivation-id") Long cultivationId,
+            @RequestHeader("X-User-Id") Long userId
+    );
 
 
-    // 누적 환경 유지율 평균(Cultivation에 코드 수정중이라 보류)
+
 
 }
