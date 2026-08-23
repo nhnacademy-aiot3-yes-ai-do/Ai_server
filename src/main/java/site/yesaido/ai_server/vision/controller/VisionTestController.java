@@ -8,7 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import site.yesaido.ai_server.vision.dto.response.VisionResponse;
+import site.yesaido.ai_server.vision.dto.Vision.response.VisionResponse;
 import site.yesaido.ai_server.vision.service.VisionRelayService;
 
 @Profile("local")
