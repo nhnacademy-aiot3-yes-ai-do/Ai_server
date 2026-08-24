@@ -20,6 +20,8 @@ import site.yesaido.ai_server.dto.front.SensorValidationResponse;
 import site.yesaido.ai_server.exception.AiAnalysisFailedException;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
+
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -43,8 +45,8 @@ public class SensorValidationService {
     private Resource userResource;
     private static final String REDIS_KEY =  "mushroom:sensor:validation:";
 
-    public SensorValidationResponse validateSensorThreshold(Long userId, SensorValidationRequest request) {
-        CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, request.cultivationId());
+    public SensorValidationResponse validateSensorThreshold(Long userId, Long cultivationId, SensorValidationRequest request) {
+        CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
         String mushroomName = findMushroomName(cultivation.mushroomId());
 
         String redisKey = REDIS_KEY + cultivation.mushroomId();
@@ -73,17 +75,23 @@ public class SensorValidationService {
                 .findFirst()
                 .orElseThrow(() -> new AiAnalysisFailedException(request.sensorTypeId()));
 
+        BigDecimal optimalMin = optimal.min();
+        BigDecimal optimalMax = optimal.max();
+        if(optimalMin.compareTo(optimalMax) >= 0) {
+            optimalMax = optimalMin.add(new BigDecimal("0.5"));
+        }
+
         boolean isValid = true;
         String feedbackMessage = "적절한 임계값입니다. 센서를 등록하셔도 좋습니다!";
 
         // 유저 입력값이 추천 범위를 벗어났는지 확인 (느슨한 검증)
-        if (request.userMin().compareTo(optimal.min()) < 0 || request.userMax().compareTo(optimal.max()) > 0) {
+        if (request.userMin().compareTo(optimalMin) < 0 || request.userMax().compareTo(optimalMax) > 0) {
             isValid = false;
             feedbackMessage = String.format("입력하신 값이 권장 범위를 벗어납니다. %s의 권장 범위는 %s ~ %s 입니다.",
-                    mushroomName, optimal.min(), optimal.max());
+                    mushroomName, optimalMin, optimalMax);
         }
 
-        return new SensorValidationResponse(isValid, feedbackMessage, optimal.min(), optimal.max());
+        return new SensorValidationResponse(isValid, feedbackMessage, optimalMin, optimalMax);
     }
 
     private AiSensorResultDto callAiForRecommendations(String mushroomName, List<String> sensorList) {

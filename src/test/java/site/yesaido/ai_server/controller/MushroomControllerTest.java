@@ -60,7 +60,7 @@ class MushroomControllerTest {
         given(mushService.generateRealDataGuide(mushroomId)).willReturn(mockResponse);
 
         // when & then
-        mockMvc.perform(get("/api/mushrooms/{mushroom-id}/guide", mushroomId))
+        mockMvc.perform(get("/api/v1/mushrooms/{mushroom-id}/guide", mushroomId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.mushroomId").value(1))
