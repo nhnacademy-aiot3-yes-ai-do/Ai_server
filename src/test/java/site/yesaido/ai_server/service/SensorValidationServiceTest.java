@@ -76,7 +76,7 @@ class SensorValidationServiceTest {
         // Given
         // 유저가 16~19도를 입력함
         SensorValidationRequest request = new SensorValidationRequest(
-                CULTIVATION_ID, 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
         given(hashOps.get(anyString(), anyString())).willReturn(null); // 캐시 비어있음 설정
@@ -91,7 +91,7 @@ class SensorValidationServiceTest {
         given(objectMapper.writeValueAsString(any())).willReturn("{\"mocked\":\"json\"}");
 
         // When
-        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, request);
+        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
 
         // Then
         assertThat(response.isValid()).isTrue();
@@ -107,7 +107,7 @@ class SensorValidationServiceTest {
         // Given
         // 유저가 온도를 10~30도로 너무 넓게 설정함 (비정상 입력)
         SensorValidationRequest request = new SensorValidationRequest(
-                CULTIVATION_ID, 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(10), BigDecimal.valueOf(30)
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(10), BigDecimal.valueOf(30)
         );
 
         // 캐시에 이미 15~20도 정답이 있다고 설정
@@ -119,7 +119,7 @@ class SensorValidationServiceTest {
         given(objectMapper.readValue(anyString(), eq(AiSensorResultDto.class))).willReturn(cachedDto);
 
         // When
-        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, request);
+        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
 
         // Then
         assertThat(response.isValid()).isFalse(); // 범위 초과로 거절(false) 반환
@@ -145,10 +145,10 @@ class SensorValidationServiceTest {
         given(objectMapper.writeValueAsString(any())).willReturn("{}");
 
         SensorValidationRequest request = new SensorValidationRequest(
-                CULTIVATION_ID, 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
-        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, request);
+        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
 
         // 캐시 에러를 삼키고 무사히 AI를 호출해서 통과(true)를 반환하는지 검증
         assertThat(response.isValid()).isTrue();
@@ -165,12 +165,12 @@ class SensorValidationServiceTest {
                 .willReturn(emptyAiResponse);
 
         SensorValidationRequest request = new SensorValidationRequest(
-                CULTIVATION_ID, 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
         // findFirst().orElseThrow() 에 걸려 AiAnalysisFailedException이 터지는지 검증
         org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class, () -> {
-            sensorValidationService.validateSensorThreshold(USER_ID, request);
+            sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
         });
     }
 }

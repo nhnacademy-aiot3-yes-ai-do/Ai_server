@@ -37,7 +37,7 @@ public interface CultivationClient {
 
     // 센서 평균값 조회
     @GetMapping("/{cultivation-id}/sensor-values/average")
-    List<SensorTypeAverageResponse> getSensorValuesAverage(
+    SensorTypeAverageListResponse getSensorValuesAverage(
             @PathVariable("cultivation-id") Long cultivationId,
             @RequestHeader("X-User-Id") Long userId
     );

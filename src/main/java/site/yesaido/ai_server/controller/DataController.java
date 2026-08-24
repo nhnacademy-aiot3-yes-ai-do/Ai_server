@@ -7,7 +7,7 @@ import site.yesaido.ai_server.dto.ai.mush_summary.ApiResponse;
 import site.yesaido.ai_server.service.MushVectorService;
 
 @RestController
-@RequestMapping("/api/admin/data")
+@RequestMapping("/api/v1/admin/data")
 @RequiredArgsConstructor
 public class DataController {
     private final MushVectorService mushVectorService;

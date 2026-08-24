@@ -14,12 +14,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
-import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.cultivation.EnvironmentComplianceResponse;
-import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
+import site.yesaido.ai_server.dto.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
-import site.yesaido.ai_server.dto.cultivation.SensorTypeAverageResponse;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import site.yesaido.ai_server.repository.InsightRepository;
@@ -304,7 +301,7 @@ class InsightServiceTest {
                 new SensorTypeAverageResponse(1L, "TEMPERATURE", "°C", 23.40),
                 new SensorTypeAverageResponse(1L, "HUMIDITY", "%", 78.50)
         );
-        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(mockAverages);
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(mockAverages));
 
         when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
 

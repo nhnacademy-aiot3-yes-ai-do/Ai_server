@@ -13,12 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
-import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.cultivation.EnvironmentComplianceResponse;
-import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
+import site.yesaido.ai_server.dto.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
-import site.yesaido.ai_server.dto.cultivation.SensorTypeAverageResponse;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import site.yesaido.ai_server.repository.InsightRepository;
@@ -96,7 +93,8 @@ public class InsightService {
         List<SensorTypeAverageResponse> sensorAverages = null;
         try{
             compliance = client.getEnvironmentCompliance(cultivationId, userId);
-            sensorAverages = client.getSensorValuesAverage(cultivationId, userId);
+            SensorTypeAverageListResponse averageResponse = client.getSensorValuesAverage(cultivationId, userId);
+            sensorAverages = (averageResponse != null) ? averageResponse.sensorTypeAverages() : null;
         } catch (Exception e) {
             log.warn("환경 유지율 조회 실패 (cultivationId={}). 기본 점수 및 기본 수치로 대체합니다.", cultivationId, e);
         }
