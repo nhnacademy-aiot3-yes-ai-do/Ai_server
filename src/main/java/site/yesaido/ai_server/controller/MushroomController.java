@@ -14,7 +14,7 @@ import site.yesaido.ai_server.service.MushService;
 public class MushroomController {
     private final MushService mushService;
 
-    @GetMapping("/api/mushrooms/{mushroom-id}/guide") // mushroomId -> mushroom-id 수정
+    @GetMapping("/api/v1/mushrooms/{mushroom-id}/guide") // mushroomId -> mushroom-id 수정
     public ResponseEntity<ApiResponse<MushGuideResponse>> getMushroomGuide(@PathVariable("mushroom-id") Long mushroomId) {
         MushGuideResponse response = mushService.generateRealDataGuide(mushroomId);
         return ResponseEntity.ok(ApiResponse.success(response));

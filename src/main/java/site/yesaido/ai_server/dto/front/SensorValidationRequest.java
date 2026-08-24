@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 
 // 프론트 요청용
 public record SensorValidationRequest(
-        Long cultivationId,
         Long sensorTypeId,
         String sensorTypeName,
         String sensorUnit,

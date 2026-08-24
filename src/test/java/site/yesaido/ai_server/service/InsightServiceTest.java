@@ -14,8 +14,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
-import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.cultivation.HarvestDetailResponse;
+import site.yesaido.ai_server.dto.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
@@ -281,5 +280,62 @@ class InsightServiceTest {
         verify(insightRepository).findSimilarCandidates( // userId == null 방어막이 작동하여 -1L이 담겼는지 검증
                 argThat(cond -> cond.myCultivationIds().contains(-1L)), any()
         );
+    }
+
+    @Test
+    @DisplayName("실제 환경 유지율과 센서 평균 데이터가 존재할 때 Insight에 정상 반영되는지 검증")
+    void saveInsight_ComplianceAndSensorAverages() {
+        setUpMockChatClient("느타리버섯 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 실제 환경 유지율 (온도 90%, 습도 80% -> 평균 85점)
+        EnvironmentComplianceResponse mockCompliance = new EnvironmentComplianceResponse(
+                new BigDecimal("90.00"), new BigDecimal("80.00"), null, null
+        );
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(mockCompliance);
+
+        // 실제 센서 평균값
+        List<SensorTypeAverageResponse> mockAverages = List.of(
+                new SensorTypeAverageResponse(1L, "TEMPERATURE", "°C", 23.40),
+                new SensorTypeAverageResponse(1L, "HUMIDITY", "%", 78.50)
+        );
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(mockAverages));
+
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        // 실제 데이터로 계산된 85점 및 센서 평균값이 DB에 전달되었는지 검증
+        assertThat(response).isNotNull();
+        verify(insightRepository).save(argThat(saved ->
+                saved.getGrowthScore().equals(85) &&
+                        saved.getAvgTemperature().compareTo(new BigDecimal("23.40")) == 0 &&
+                        saved.getAvgHumidity().compareTo(new BigDecimal("78.50")) == 0
+        ));
+    }
+
+    @Test
+    @DisplayName("환경 데이터 조회 실패(예외 발생) 시 Fallback 기본 수치(80점 및 표준 센서값)로 저장 검증")
+    void saveInsight_ComplianceExceptionFallback() {
+        setUpMockChatClient("느타리버섯 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 환경 데이터 조회 시 에러 발생 가정
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenThrow(new RuntimeException("Feign 에러"));
+
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        // 에러로 멈추지 않고 기본 80점과 기본 센서값으로 저장되는지 검증
+        assertThat(response).isNotNull();
+        verify(insightRepository).save(argThat(saved ->
+                saved.getGrowthScore().equals(80) &&
+                        saved.getAvgTemperature().compareTo(new BigDecimal("20.50")) == 0
+        ));
     }
 }
