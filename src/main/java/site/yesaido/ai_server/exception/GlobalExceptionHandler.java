@@ -84,7 +84,7 @@ public class GlobalExceptionHandler {
     // Cultivation_server나 Gateway 서버와의 네트워크 연결이 끊긴 경우
     @ExceptionHandler(FeignException.class)
     public ErrorResponse handleFeignException(FeignException e) {
-        log.error("[Feign Communication Error] 외부 서버 통신 실패 (Status: {}): {}", e.status(), e.getMessage());
+        log.error("[FeignException] 외부 서비스 호출 실패. status={}, type={}", e.status(), e.getClass().getSimpleName());
         return ErrorResponse.create(e, HttpStatus.BAD_GATEWAY, "외부 서비스 연결이 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요.");
     }
 
