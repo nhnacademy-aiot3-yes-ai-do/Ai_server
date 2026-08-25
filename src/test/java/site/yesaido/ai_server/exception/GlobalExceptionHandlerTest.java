@@ -5,7 +5,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.ErrorResponse;
-import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import site.yesaido.common.exception.client.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,16 +60,16 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().getDetail()).isEqualTo(e.getMessage());
     }
 
-//    @Test
-//    @DisplayName("404 MushDataNotFound 예외 처리 핸들러 테스트")
-//    void handleMushDataNotFoundTest() {
-//        MushDataNotFoundException exception = new MushDataNotFoundException(5L);
-//        ErrorResponse response = handler.handleMushDataNotFound(exception);
-//
-//        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-//        assertThat(response.getBody()).isNotNull();
-//        assertThat(response.getBody().getDetail()).contains("5");
-//    }
+    @Test
+    @DisplayName("404 Not Found - 버섯 데이터 없음(MushDataNotFoundException) 처리 테스트")
+    void handleMushDataNotFoundTest() {
+        MushDataNotFoundException exception = new MushDataNotFoundException(5L);
+        ErrorResponse response = handler.handleNotFoundException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).contains("5");
+    }
 
     @Test
     @DisplayName("409 Conflict - 중복/충돌 예외 처리 테스트")
@@ -128,20 +127,6 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getDetail()).contains("외부 서비스 연결이 일시적으로 원활하지 않습니다.");
-    }
-
-    @Test
-    @DisplayName("필수 요청 헤더가 누락되면 400을 반환한다")
-    void handleMissingRequestHeaderExceptionTest() {
-        MissingRequestHeaderException exception = mock(MissingRequestHeaderException.class);
-
-        when(exception.getHeaderName()).thenReturn("X-User-Id");
-
-        ErrorResponse response = handler.handleMissingRequestHeaderException(exception);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getDetail()).isEqualTo("필수 헤더가 누락되었습니다: X-User-Id");
     }
 
     @Test

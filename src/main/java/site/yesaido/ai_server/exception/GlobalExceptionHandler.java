@@ -103,7 +103,7 @@ public class GlobalExceptionHandler {
         return ErrorResponse.create(e, HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부에 오류가 발생했습니다.");
     }
 
-    // 탭 아이콘 없어서 생기는 파비콘(favicion.ico) 에러 별도 처리해서 조용히 넘기
+    // [404 NOT_FOUND] 브라우저 자동 요청(favicon.ico 등)으로 인한 정적 파일 미발견 예외 조용히 처리
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Void> handleNoResourceFound() {
         return ResponseEntity.notFound().build();
