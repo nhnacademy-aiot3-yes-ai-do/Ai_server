@@ -1,0 +1,4 @@
+feign:
+  client:
+    vision-server:
+      url: "http://vision-test.invalid"

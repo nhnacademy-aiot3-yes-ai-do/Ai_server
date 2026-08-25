@@ -24,5 +24,8 @@ runs:
         echo "RABBITMQ_USERNAME=test" >> "$GITHUB_ENV"
         echo "RABBITMQ_PASSWORD=test1234" >> "$GITHUB_ENV"
         
-        #Openfeign
+        # Openfeign
         echo "CULTIVATION_SERVER_URL=http://localhost:8084" >> "$GITHUB_ENV"
+        
+        #  Vision
+        echo "VISION_SERVER_URL=http://vision-test.invalid" >> "$GITHUB_ENV"

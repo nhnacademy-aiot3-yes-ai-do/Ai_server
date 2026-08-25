@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -87,17 +88,24 @@ public class GlobalExceptionHandler {
         return ErrorResponse.create(e, HttpStatus.BAD_GATEWAY, "외부 서비스 연결이 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요.");
     }
 
-    // [500 INTERNAL_SERVER_ERROR] 처리되지 않은 모든 예상치 못한 예외의 최후 방어막
+    // 필수 요청 헤더가 누락된 경우 처리 (400 BAD_REQUEST)
+    // 예: X-User-Id 없이 센서 검증 API를 호출한 경우
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ErrorResponse handleMissingRequestHeaderException(MissingRequestHeaderException e) {
+        log.warn("[MissingRequestHeader] 필수 헤더 누락. header={}", e.getHeaderName());
+        return ErrorResponse.create(e, HttpStatus.BAD_REQUEST, "필수 헤더가 누락되었습니다: " + e.getHeaderName());
+    }
+
+    // 처리되지 않은 모든 예외 방어막 (500 INTERNAL_SERVER_ERROR)
     @ExceptionHandler(Exception.class)
     public ErrorResponse handleException(Exception e) {
         log.error("[Unhandled Exception] 예외 발생", e);
         return ErrorResponse.create(e, HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부에 오류가 발생했습니다.");
     }
 
-    // [404 NOT_FOUND] 브라우저 자동 요청(favicon.ico 등)으로 인한 정적 파일 미발견 예외 조용히 처리
+    // 탭 아이콘 없어서 생기는 파비콘(favicion.ico) 에러 별도 처리해서 조용히 넘기
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Void> handleNoResourceFound() {
         return ResponseEntity.notFound().build();
     }
-
 }
