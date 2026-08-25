@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.vision.dto.Vision.response;
+package site.yesaido.ai_server.dto.vision.response;
 
 /**
  * Vision 서버가 이번 요청의 탐지와 건강 분류에 적용한 임계값이다.

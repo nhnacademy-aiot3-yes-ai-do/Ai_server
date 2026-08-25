@@ -42,24 +42,9 @@
         <minio.version>9.0.3</minio.version>
         <argLine/>
     </properties>
-    <repositories>
-        <repository>
-            <id>jitpack.io</id>
-            <url>https://jitpack.io/</url>
-        </repository>
-    </repositories>
 
     <dependencies>
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
 
-        <dependency>
-            <groupId>com.github.nhnacademy-aiot3-yes-ai-do</groupId>
-            <artifactId>yesaido-common</artifactId>
-            <version>v1.1.1</version>
-        </dependency>
 
         <!--오픈페인-->
         <dependency>
@@ -70,13 +55,6 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
-        </dependency>
-
-        <!--MINIO-->
-        <dependency>
-            <groupId>io.minio</groupId>
-            <artifactId>minio</artifactId>
-            <version>${minio.version}</version>
         </dependency>
 
         <dependency>
@@ -159,19 +137,8 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-openfeign</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-dbcp2</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.github.nhnacademy-aiot3-yes-ai-do</groupId>
-            <artifactId>yesaido-common</artifactId>
-            <version>v1.0.0</version>
         </dependency>
 
         <dependency>

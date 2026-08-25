@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.vision.dto.Vision.response;
+package site.yesaido.ai_server.dto.vision.response;
 
 import java.util.List;
 
@@ -6,6 +6,7 @@ import java.util.List;
  * 같은 품종으로 탐지된 버섯들을 하나로 묶어 분석한 결과이다.
  *
  * @param species 탐지된 버섯 품종 이름
+ * @param speciesCode 서비스 간 계약에서 사용하는 안정적인 품종 코드
  * @param speciesClassId 탐지 모델에서 사용하는 품종 클래스 ID
  * @param detectedCount 같은 품종으로 묶인 탐지 객체 수
  * @param detectionConfidence 같은 품종 탐지 결과 중 가장 높은 신뢰도
@@ -19,6 +20,7 @@ import java.util.List;
  */
 public record Result(
         String species,
+        String speciesCode,
         int speciesClassId,
         int detectedCount,
         double detectionConfidence,

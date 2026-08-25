@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.vision.dto.Vision.response;
+package site.yesaido.ai_server.dto.vision.response;
 
 import java.util.List;
 

@@ -1,6 +1,13 @@
 spring:
   application:
     name: ai-server
+  cloud:
+    openfeign:
+      client:
+        config:
+          vision-client:
+            connect-timeout: 5000
+            read-timeout: 120000
   config:
     import: optional:file:.env[.properties]
 
@@ -71,3 +78,8 @@ feign:
   client:
     cultivation-server:
       url: ${CULTIVATION_SERVER_URL}
+    vision-server:
+      url: ${VISION_SERVER_URL}
+
+server:
+  port: 8080

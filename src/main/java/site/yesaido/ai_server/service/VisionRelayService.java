@@ -1,11 +1,11 @@
-package site.yesaido.ai_server.vision.service;
+package site.yesaido.ai_server.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import site.yesaido.ai_server.storage.minio.service.MinioImageService;
-import site.yesaido.ai_server.vision.client.VisionClient;
-import site.yesaido.ai_server.vision.dto.Vision.response.VisionResponse;
+import site.yesaido.ai_server.client.VisionClient;
+import site.yesaido.ai_server.dto.vision.response.VisionResponse;
 
 @Service
 @RequiredArgsConstructor

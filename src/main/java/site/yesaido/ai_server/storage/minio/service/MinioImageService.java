@@ -12,7 +12,6 @@ import org.springframework.web.multipart.MultipartFile;
 import site.yesaido.ai_server.storage.minio.config.MinioProperties;
 import site.yesaido.ai_server.storage.minio.exception.MinioObjectReadException;
 import site.yesaido.ai_server.storage.multipart.ByteArrayMultipartFile;
-import site.yesaido.common.storage.StorageUrlResolver;
 
 import java.io.IOException;
 
@@ -21,7 +20,7 @@ import java.io.IOException;
  */
 @Service
 @RequiredArgsConstructor
-public class MinioImageService implements StorageUrlResolver {
+public class MinioImageService {
 
     private static final String IMAGE_PART_NAME = "image";
     private static final String DEFAULT_CONTENT_TYPE = MediaType.APPLICATION_OCTET_STREAM_VALUE;
