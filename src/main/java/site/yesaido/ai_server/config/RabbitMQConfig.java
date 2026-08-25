@@ -1,6 +1,10 @@
 package site.yesaido.ai_server.config;
 
 import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -8,6 +12,19 @@ import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
 
 @Configuration
 public class RabbitMQConfig {
+
+    @Bean // 자바 객체 JSON 변환
+    public MessageConverter messageConverter() {
+        return new JacksonJsonMessageConverter();
+    }
+
+    @Bean // RabbitTemplate에 주입
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
+        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(messageConverter);
+        return rabbitTemplate;
+    }
+
     // 공통 Dead Letter Exchange
     @Bean
     public FanoutExchange deadLetterExchange() {
