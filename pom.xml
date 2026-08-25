@@ -39,12 +39,21 @@
         </sonar.coverage.jacoco.xmlReportPaths>
 
         <jacoco.minimum.line.coverage>0.40</jacoco.minimum.line.coverage>
-        <minio.version>9.0.3</minio.version>
         <argLine/>
     </properties>
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io/</url>
+        </repository>
+    </repositories>
 
     <dependencies>
-
+        <dependency>
+            <groupId>com.github.nhnacademy-aiot3-yes-ai-do</groupId>
+            <artifactId>yesaido-common</artifactId>
+            <version>v1.2.2</version>
+        </dependency>
 
         <!--오픈페인-->
         <dependency>
