@@ -40,3 +40,6 @@ application-dev.yml
 
 ###
 /doc/
+
+### macOS ###
+.DS_Store

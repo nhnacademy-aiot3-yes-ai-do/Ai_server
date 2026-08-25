@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import site.yesaido.common.exception.client.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -102,6 +103,20 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getDetail()).contains("CSV 데이터를 읽어오는 중 문제가 발생했습니다.");
+    }
+
+    @Test
+    @DisplayName("필수 요청 헤더가 누락되면 400을 반환한다")
+    void handleMissingRequestHeaderExceptionTest() {
+        MissingRequestHeaderException exception = mock(MissingRequestHeaderException.class);
+
+        when(exception.getHeaderName()).thenReturn("X-User-Id");
+
+        ErrorResponse response = handler.handleMissingRequestHeaderException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getDetail()).isEqualTo("필수 헤더가 누락되었습니다: X-User-Id");
     }
 
     @Test
