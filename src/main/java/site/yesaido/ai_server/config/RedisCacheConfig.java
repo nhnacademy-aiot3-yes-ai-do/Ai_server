@@ -1,6 +1,8 @@
 package site.yesaido.ai_server.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -35,23 +37,23 @@ public class RedisCacheConfig implements CachingConfigurer {
     public CacheErrorHandler errorHandler() {
         return new CacheErrorHandler() {
             @Override
-            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+            public void handleCacheGetError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key) {
                 log.warn("Redis 캐시 조회 실패 (cache={}, key={}) - 캐시 미스로 처리하고 새로 생성합니다: {}",
                         cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+            public void handleCachePutError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key, @Nullable Object value) {
                 log.warn("Redis 캐시 저장 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+            public void handleCacheEvictError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key) {
                 log.warn("Redis 캐시 삭제 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+            public void handleCacheClearError(@NonNull RuntimeException exception, @NonNull Cache cache) {
                 log.warn("Redis 캐시 전체 삭제 실패 (cache={}): {}", cache.getName(), exception.getMessage());
             }
         };
