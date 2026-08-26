@@ -77,7 +77,7 @@ public class RedisCacheConfig implements CachingConfigurer {
                 .disableCachingNullValues() // Null 값 캐싱 비활성화 <- allowIfSubType을 설정해놔서 해당하는 클래스만 허용되게 해놨는데 null 리턴해버리면 서버 요청 실패하니 비활성화로 변경
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())) // Key는 눈에 잘 보이는 문자열로 저장
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)) // Value는 위에서 만든 JSON 직렬화기로 저장
-                .entryTtl(Duration.ofDays(7)); // 7일 뒤에 데이터 삭제
+                .entryTtl(Duration.ofDays(15)); // 15일 뒤에 데이터 삭제
 
         // 캐시 매니저 생성 및 반환
         return RedisCacheManager.RedisCacheManagerBuilder

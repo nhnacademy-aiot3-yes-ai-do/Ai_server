@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
+import site.yesaido.ai_server.rabbitmq.event.AiEvent.HarvestCompletedEvent;
 import site.yesaido.ai_server.service.InsightService;
 import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.AI_HARVEST_QUEUE;
 
@@ -25,11 +26,4 @@ public class HarvestEventConsumer {
             throw e; // 예외를 던져야 RabbitMQ가 실패를 인지하고 DLQ로 넘김
         }
     }
-
-    public record HarvestCompletedEvent( // Cultivation이 보내주는 DTO
-            Long cultivationId,
-            Long userId,
-            String cultivationName,
-            Double harvestWeight
-    ) {}
 }

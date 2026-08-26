@@ -39,7 +39,10 @@ import static org.mockito.BDDMockito.given;
 class SensorValidationServiceTest {
     // 메서드 체이닝을 한 줄로 모킹해주는 옵션(객체에 . 찍고 들어가서 반환하는 것들 자동으로 가짜(Mock) 무한 생성)
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-    private ChatClient chatClient;
+    private ChatClient geminiChatClient;
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private ChatClient ollamaChatClient;
     @Mock private CultivationClient cultivationClient;
     @Mock private ObjectMapper objectMapper;
     @Mock private StringRedisTemplate redisTemplate;
@@ -54,9 +57,12 @@ class SensorValidationServiceTest {
     private static final Long MUSHROOM_ID = 1L;
     private static final String REDIS_KEY = "mushroom:sensor:validation:1";
 
-
     @BeforeEach
     void setup(){ // @Value에 값 테스트에서 안 넣어버리는 문제 해결 위해 가짜 파일 채워줌
+        sensorValidationService = new SensorValidationService(
+                geminiChatClient, ollamaChatClient, cultivationClient,
+                objectMapper, redisTemplate, mushCsvReader);
+
         ReflectionTestUtils.setField(sensorValidationService, "systemResource", new ByteArrayResource("system prompt".getBytes()));
         ReflectionTestUtils.setField(sensorValidationService, "userResource", new ByteArrayResource("user prompt".getBytes()));
 
@@ -85,7 +91,7 @@ class SensorValidationServiceTest {
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
                 List.of());
-        given(chatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
+        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
                 .willReturn(mockAiResponse);
 
         given(objectMapper.writeValueAsString(any())).willReturn("{\"mocked\":\"json\"}");
@@ -126,7 +132,7 @@ class SensorValidationServiceTest {
         assertThat(response.message()).contains("권장 범위는 15"); // 추천 범위를 포함한 피드백인지 확인
 
         // AI 호출 없었음 확인
-        verify(chatClient, times(0)).prompt();
+        verify(geminiChatClient, times(0)).prompt();
     }
 
     @Test
@@ -139,8 +145,9 @@ class SensorValidationServiceTest {
 
         // 에러를 무시하고 AI 호출 준비를 하는지 검증하기 위한 가짜 AI 응답
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
-                List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))), List.of());
-        given(chatClient.prompt().system(any(java.util.function.Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
+                List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
+                List.of(new SensorRangeDto(10L, BigDecimal.valueOf(10), BigDecimal.valueOf(18))));
+        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
                 .willReturn(mockAiResponse);
         given(objectMapper.writeValueAsString(any())).willReturn("{}");
 
@@ -161,7 +168,7 @@ class SensorValidationServiceTest {
 
         // AI가 빈 배열을 반환하거나, 요청한 10번 센서가 아닌 다른 센서 결과만 줬다고 가정
         AiSensorResultDto emptyAiResponse = new AiSensorResultDto(List.of(), List.of());
-        given(chatClient.prompt().system(any(java.util.function.Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
+        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
                 .willReturn(emptyAiResponse);
 
         SensorValidationRequest request = new SensorValidationRequest(
@@ -172,5 +179,37 @@ class SensorValidationServiceTest {
         org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class, () -> {
             sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
         });
+    }
+
+    @Test
+    @DisplayName("수확기(HARVEST) 모드일 때 -> harvestPhase 권장 범위 기준으로 검증 통과(true) 확인")
+    void validate_HarvestMode_ValidInput() throws Exception {
+        // Given
+        // 1. 재배지 상태가 "HARVEST" 모드로 반환되도록 모킹
+        given(cultivationClient.getCultivation(USER_ID, CULTIVATION_ID))
+                .willReturn(new CultivationDetailResponse(CULTIVATION_ID, MUSHROOM_ID, "ACTIVE", "HARVEST", LocalDateTime.now()));
+
+        // 2. 캐시에 재배기(20~24도)와 수확기(15~18도) 데이터가 모두 들어있다고 가정
+        given(hashOps.get(REDIS_KEY, "10")).willReturn("{\"mocked\": \"json\"}");
+
+        AiSensorResultDto cachedDto = new AiSensorResultDto(
+                List.of(new SensorRangeDto(10L, BigDecimal.valueOf(20), BigDecimal.valueOf(24))), // 재배기
+                List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(18)))  // 수확기 (타겟)
+        );
+        given(objectMapper.readValue(anyString(), eq(AiSensorResultDto.class))).willReturn(cachedDto);
+
+        // 3. 유저가 16~17도 입력 (재배기 20~24도 기준이면 실패하지만, 수확기 15~18도 기준이므로 성공해야 함)
+        SensorValidationRequest request = new SensorValidationRequest(
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(17)
+        );
+
+        // When
+        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
+
+        // Then
+        assertThat(response.isValid()).isTrue();
+        assertThat(response.recommendedMin()).isEqualByComparingTo(BigDecimal.valueOf(15));
+        assertThat(response.recommendedMax()).isEqualByComparingTo(BigDecimal.valueOf(18));
+        assertThat(response.message()).contains("적절한 임계값입니다");
     }
 }
