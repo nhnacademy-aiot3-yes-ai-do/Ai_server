@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.HashOperations;
@@ -27,9 +28,9 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SensorValidationService {
-    private final ChatClient chatClient;
+    private final ChatClient geminiChatClient;
+    private final ChatClient ollamaChatClient;
     private final CultivationClient cultivationClient;
     private final ObjectMapper objectMapper; // JAVA <-> JSON 변환기
     /**
@@ -44,6 +45,21 @@ public class SensorValidationService {
     @Value("classpath:prompts/sensor_validation_user.st")
     private Resource userResource;
     private static final String REDIS_KEY =  "mushroom:sensor:validation:";
+
+    public SensorValidationService(
+            @Qualifier("geminiChatClient") ChatClient geminiChatClient,
+            @Qualifier("ollamaChatClient") ChatClient ollamaChatClient,
+            CultivationClient cultivationClient,
+            ObjectMapper objectMapper,
+            StringRedisTemplate redisTemplate,
+            MushCsvReader mushCsvReader) {
+        this.geminiChatClient = geminiChatClient;
+        this.ollamaChatClient = ollamaChatClient;
+        this.cultivationClient = cultivationClient;
+        this.objectMapper = objectMapper;
+        this.redisTemplate = redisTemplate;
+        this.mushCsvReader = mushCsvReader;
+    }
 
     public SensorValidationResponse validateSensorThreshold(Long userId, Long cultivationId, SensorValidationRequest request) {
         CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
@@ -66,11 +82,19 @@ public class SensorValidationService {
 
         if (aiData == null || aiData.vegetativePhase().isEmpty()) {
             String sensorInfo = request.sensorTypeName() + " (" + request.sensorUnit() + ")";
-            aiData = callAiForRecommendations(mushroomName, List.of(sensorIdStr + " : " + sensorInfo));
+            String combinedData = findMushroomContext(cultivation.mushroomId()); // CSV 내용 추출
+            aiData = callAiForRecommendations(mushroomName, combinedData, List.of(sensorIdStr + " : " + sensorInfo));
             cacheAiResultBySensor(redisKey, hashOps, aiData);
         }
 
-        SensorRangeDto optimal = aiData.vegetativePhase().stream()
+        // 재배지 모드(HARVEST or GROWTH)에 따라 적절한 추천 목록 선택
+        boolean isHarvestMode = "HARVEST".equalsIgnoreCase(cultivation.mode());
+
+        List<SensorRangeDto> targetPhaseList = isHarvestMode
+                ? aiData.harvestPhase()       // 수확기 권장 범위
+                : aiData.vegetativePhase();   // 재배기 권장 범위
+
+        SensorRangeDto optimal = targetPhaseList.stream()
                 .filter(s -> s.sensorTypeId().equals(request.sensorTypeId()))
                 .findFirst()
                 .orElseThrow(() -> new AiAnalysisFailedException(request.sensorTypeId()));
@@ -94,20 +118,37 @@ public class SensorValidationService {
         return new SensorValidationResponse(isValid, feedbackMessage, optimalMin, optimalMax);
     }
 
-    private AiSensorResultDto callAiForRecommendations(String mushroomName, List<String> sensorList) {
+    private AiSensorResultDto callAiForRecommendations(String mushroomName, String combinedData, List<String> sensorList) {
         String sensorListString = String.join("\n", sensorList);
 
         PromptTemplate userPromptTemplate = new PromptTemplate(userResource);
         String userMessage = userPromptTemplate.render(Map.of(
                 "mushroomName", mushroomName,
+                "combinedData", combinedData,
                 "sensorList", sensorListString
         ));
 
-        return chatClient.prompt()
-                .system(sys -> sys.text(systemResource))
-                .user(userMessage)
-                .call()
-                .entity(AiSensorResultDto.class);
+        try { // gemini로 1차 시도 후 실패하면 올라마 사용해서라도 답변 나오게 수정
+            log.info("[AI 임계값 분석] 1차 시도: Gemini API 호출 시작...");
+            return geminiChatClient.prompt()
+                    .system(sys -> sys.text(systemResource))
+                    .user(userMessage)
+                    .call()
+                    .entity(AiSensorResultDto.class);
+        } catch (Exception e) {
+            // 2차 시도: Gemini 429 쿼터 초과 또는 장애 발생 시 사내 Ollama로 자동 전환
+            log.warn("[AI 임계값 분석] Gemini 호출 실패(쿼터 초과/장애). 사내 Ollama(Qwen 3.5)로 Failover 전환합니다. 원인: {}", e.getMessage());
+            try {
+                return ollamaChatClient.prompt()
+                        .system(sys -> sys.text(systemResource))
+                        .user(userMessage)
+                        .call()
+                        .entity(AiSensorResultDto.class);
+            } catch (Exception fallbackEx) {
+                log.error("[AI 임계값 분석] Ollama Fallback마저 실패했습니다.", fallbackEx);
+                throw new AiAnalysisFailedException(0L);
+            }
+        }
     }
 
     private void cacheAiResultBySensor(String redisKey, HashOperations<String, String, String> hashOps, AiSensorResultDto aiResponse)
@@ -145,5 +186,19 @@ public class SensorValidationService {
             }
         }
         throw new MushDataNotFoundException(mushroomId);
+    }
+
+    private String findMushroomContext(Long mushroomId) { // CSV 텍스트 추출 메서드
+        List<MushroomCsvDto> csvDtoList = mushCsvReader.readMushroomCsv();
+        StringBuilder sb = new StringBuilder();
+        for (MushroomCsvDto dto : csvDtoList) {
+            if (dto.mushroomId().equals(mushroomId)) {
+                sb.append("[").append(dto.title()).append("] ").append(dto.content()).append("\n");
+            }
+        }
+        if (sb.isEmpty()) {
+            throw new MushDataNotFoundException(mushroomId);
+        }
+        return sb.toString();
     }
 }

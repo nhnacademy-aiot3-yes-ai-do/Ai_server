@@ -1,6 +1,8 @@
 package site.yesaido.ai_server.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CachingConfigurer;
@@ -35,23 +37,23 @@ public class RedisCacheConfig implements CachingConfigurer {
     public CacheErrorHandler errorHandler() {
         return new CacheErrorHandler() {
             @Override
-            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+            public void handleCacheGetError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key) {
                 log.warn("Redis 캐시 조회 실패 (cache={}, key={}) - 캐시 미스로 처리하고 새로 생성합니다: {}",
                         cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+            public void handleCachePutError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key, @Nullable Object value) {
                 log.warn("Redis 캐시 저장 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+            public void handleCacheEvictError(@NonNull RuntimeException exception, @NonNull Cache cache, @NonNull Object key) {
                 log.warn("Redis 캐시 삭제 실패 (cache={}, key={}): {}", cache.getName(), key, exception.getMessage());
             }
 
             @Override
-            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+            public void handleCacheClearError(@NonNull RuntimeException exception, @NonNull Cache cache) {
                 log.warn("Redis 캐시 전체 삭제 실패 (cache={}): {}", cache.getName(), exception.getMessage());
             }
         };
@@ -77,7 +79,7 @@ public class RedisCacheConfig implements CachingConfigurer {
                 .disableCachingNullValues() // Null 값 캐싱 비활성화 <- allowIfSubType을 설정해놔서 해당하는 클래스만 허용되게 해놨는데 null 리턴해버리면 서버 요청 실패하니 비활성화로 변경
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer())) // Key는 눈에 잘 보이는 문자열로 저장
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)) // Value는 위에서 만든 JSON 직렬화기로 저장
-                .entryTtl(Duration.ofDays(7)); // 7일 뒤에 데이터 삭제
+                .entryTtl(Duration.ofDays(15)); // 15일 뒤에 데이터 삭제
 
         // 캐시 매니저 생성 및 반환
         return RedisCacheManager.RedisCacheManagerBuilder

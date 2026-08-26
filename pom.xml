@@ -39,8 +39,8 @@
         </sonar.coverage.jacoco.xmlReportPaths>
 
         <jacoco.minimum.line.coverage>0.40</jacoco.minimum.line.coverage>
+        <argLine/>
     </properties>
-
     <repositories>
         <repository>
             <id>jitpack.io</id>
@@ -136,7 +136,7 @@
         <dependency>
             <groupId>com.github.nhnacademy-aiot3-yes-ai-do</groupId>
             <artifactId>yesaido-common</artifactId>
-            <version>v1.1.1</version>
+            <version>v1.2.2</version>
         </dependency>
 
         <dependency>
@@ -215,6 +215,28 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>
+                        @{argLine} -javaagent:${org.mockito:mockito-core:jar}
+                    </argLine>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
@@ -272,6 +294,12 @@
                         <groupId>org.pitest</groupId>
                         <artifactId>pitest-maven</artifactId>
                         <version>1.25.8</version>
+                        <configuration>
+                            <parseSurefireArgLine>false</parseSurefireArgLine>
+                            <jvmArgs>
+                                <jvmArg>-XX:+EnableDynamicAgentLoading</jvmArg>
+                            </jvmArgs>
+                        </configuration>
                         <dependencies>
                             <dependency>
                                 <groupId>org.pitest</groupId>
