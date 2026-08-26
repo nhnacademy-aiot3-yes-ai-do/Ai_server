@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -83,11 +84,19 @@ public class GlobalExceptionHandler {
     // Cultivation_server나 Gateway 서버와의 네트워크 연결이 끊긴 경우
     @ExceptionHandler(FeignException.class)
     public ErrorResponse handleFeignException(FeignException e) {
-        log.error("[Feign Communication Error] 외부 서버 통신 실패 (Status: {}): {}", e.status(), e.getMessage());
+        log.error("[FeignException] 외부 서비스 호출 실패. status={}, type={}", e.status(), e.getClass().getSimpleName());
         return ErrorResponse.create(e, HttpStatus.BAD_GATEWAY, "외부 서비스 연결이 일시적으로 원활하지 않습니다. 잠시 후 다시 시도해 주세요.");
     }
 
-    // [500 INTERNAL_SERVER_ERROR] 처리되지 않은 모든 예상치 못한 예외의 최후 방어막
+    // 필수 요청 헤더가 누락된 경우 처리 (400 BAD_REQUEST)
+    // 예: X-User-Id 없이 센서 검증 API를 호출한 경우
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ErrorResponse handleMissingRequestHeaderException(MissingRequestHeaderException e) {
+        log.warn("[MissingRequestHeader] 필수 헤더 누락. header={}", e.getHeaderName());
+        return ErrorResponse.create(e, HttpStatus.BAD_REQUEST, "필수 헤더가 누락되었습니다: " + e.getHeaderName());
+    }
+
+    // 처리되지 않은 모든 예외 방어막 (500 INTERNAL_SERVER_ERROR)
     @ExceptionHandler(Exception.class)
     public ErrorResponse handleException(Exception e) {
         log.error("[Unhandled Exception] 예외 발생", e);
@@ -99,5 +108,4 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Void> handleNoResourceFound() {
         return ResponseEntity.notFound().build();
     }
-
 }
