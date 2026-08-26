@@ -22,7 +22,7 @@ import java.time.Duration;
 @Slf4j
 @EnableCaching // Spring Boot 캐시 전원 켜기
 @Configuration
-public class  RedisCacheConfig implements CachingConfigurer {
+public class RedisCacheConfig implements CachingConfigurer {
 
     /*
      * 예전 DTO 패키지 경로(site.yesaido.ai_server.dto.ai.mush_summary.MushGuideResponse 등)로
