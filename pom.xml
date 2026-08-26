@@ -294,6 +294,12 @@
                         <groupId>org.pitest</groupId>
                         <artifactId>pitest-maven</artifactId>
                         <version>1.25.8</version>
+                        <configuration>
+                            <parseSurefireArgLine>false</parseSurefireArgLine>
+                            <jvmArgs>
+                                <jvmArg>-XX:+EnableDynamicAgentLoading</jvmArg>
+                            </jvmArgs>
+                        </configuration>
                         <dependencies>
                             <dependency>
                                 <groupId>org.pitest</groupId>
