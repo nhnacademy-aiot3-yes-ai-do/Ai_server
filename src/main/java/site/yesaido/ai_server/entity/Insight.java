@@ -54,6 +54,7 @@ public class Insight {
     private LocalDateTime createdAt;
 
     @Builder
+    @SuppressWarnings("java:S107") // 파라미터 7개 초과 경고 억제
     public Insight(Long cultivationId, Long mushroomId, BigDecimal avgTemperature, BigDecimal avgHumidity,
                    BigDecimal avgCo2, BigDecimal avgLight, BigDecimal harvestWeightGrams, Integer growthScore, String summary) {
         this.cultivationId = cultivationId;
