@@ -31,7 +31,7 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-ai.version>2.0.0</spring-ai.version>
 
-        <sonar.projectKey>yes-nhn_ai_server</sonar.projectKey>
+        <sonar.projectKey>yes-nhn_ai-server</sonar.projectKey>
         <sonar.projectName>Ai-server</sonar.projectName>
 
         <sonar.coverage.jacoco.xmlReportPaths>
