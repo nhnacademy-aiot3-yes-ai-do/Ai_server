@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.front;
+package site.yesaido.ai_server.dto.ai.sensor_validation;
 
 import java.util.List;
 

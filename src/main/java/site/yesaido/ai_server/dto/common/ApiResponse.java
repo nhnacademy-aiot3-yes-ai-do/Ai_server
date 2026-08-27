@@ -1,12 +1,9 @@
-package site.yesaido.ai_server.dto.ai.mush_summary;
+package site.yesaido.ai_server.dto.common;
 /*
 제네릭 <T>를 사용해 데이터에 String, List 등 무엇이든 담을 수 있게 구현
-공통 응답 포맷 및 handler 적용
-변경사항
 ApiResponse<T>를 작성하여 구조 통일
  */
-
-public record ApiResponse<T>(
+public record ApiResponse<T>( // 공통 응답 DTO
         boolean success, // 성공/실패 여부
         String message, // 메시지
         T data // 데이터

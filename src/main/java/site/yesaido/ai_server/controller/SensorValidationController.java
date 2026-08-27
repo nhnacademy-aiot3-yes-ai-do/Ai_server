@@ -2,9 +2,9 @@ package site.yesaido.ai_server.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import site.yesaido.ai_server.dto.ai.mush_summary.ApiResponse;
-import site.yesaido.ai_server.dto.front.SensorValidationRequest;
-import site.yesaido.ai_server.dto.front.SensorValidationResponse;
+import site.yesaido.ai_server.dto.common.ApiResponse;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationRequest;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
 import site.yesaido.ai_server.service.SensorValidationService;
 
 @RestController
