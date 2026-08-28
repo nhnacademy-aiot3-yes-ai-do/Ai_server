@@ -21,8 +21,7 @@ public class MushroomKnowledgeTool {
     @Tool(description = "버섯의 효능, 영양 성분, 병충해(곰팡이/갈변 등) 대처법, 보관법, 요리 레시피 등 농업 전문 지식을 PGVector에서 검색합니다.")
     public String searchMushroomKnowledge(
             @ToolParam(description = "검색할 질문 키워드 (예: '느타리버섯 효능', '갈색 반점 치료법')") String query) {
-
-        log.info("🔍 [Tool 호출] 버섯 지식 RAG 검색 시작: '{}'", query);
+        log.info("버섯 지식 RAG 검색 시작: '{}'", query);
 
         try {
             // PGVector에서 코사인 유사도가 가장 높은 상위 3개 문서 검색
@@ -30,7 +29,7 @@ public class MushroomKnowledgeTool {
                     SearchRequest.builder()
                             .query(query)
                             .topK(3)
-                            .similarityThreshold(0.6) // 유사도 0.6 이상만 선별
+                            .similarityThreshold(0.6) // 유사도 0.6 이상만 가져오기
                             .build()
             );
 
@@ -44,9 +43,12 @@ public class MushroomKnowledgeTool {
                             doc.getText()))
                     .collect(Collectors.joining("\n\n"));
 
+        } catch (org.springframework.dao.DataAccessException e) {
+            log.error("PGVector 지식 데이터베이스 조회 실패: {}", e.getMessage(), e);
+            return "버섯 지식 데이터베이스(PGVector)를 조회하는 중 오류가 발생했습니다.";
         } catch (Exception e) {
-            log.error("버섯 지식 RAG 검색 중 오류 발생: {}", e.getMessage());
-            return "지식 검색 중 일시적인 오류가 발생했습니다: " + e.getMessage();
+            log.error("버섯 지식 RAG 검색 중 예상치 못한 오류 발생: {}", e.getMessage(), e);
+            return "지식 검색 중 일시적인 시스템 오류가 발생했습니다.";
         }
     }
 }

@@ -1,6 +1,7 @@
 package site.yesaido.ai_server.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import site.yesaido.ai_server.entity.ChatConversation;
 
 import java.util.Optional;
@@ -18,7 +19,8 @@ public interface ChatConversationRepository extends JpaRepository<ChatConversati
     Optional<ChatConversation> findByExternalConversationId(String externalConversationId);
 
     // 사용자와 특정 경작지로 가장 최근 대화방 세션 복원하는데 사용
-    Optional<ChatConversation> findFirstByUserIdAndCultivationIdOrderByUpdatedAtDesc(Long userId, Long cultivationId);
+    @Query("SELECT c FROM ChatConversation c WHERE c.userId = :userId AND c.cultivationId = :cultivationId ORDER BY c.updatedAt DESC LIMIT 1")
+    Optional<ChatConversation> findLatestByCultivation(Long userId, Long cultivationId);
 
     // 해당 사용자의 대화방이 이미 존재하는지 여부 확인
     boolean existsByUserId(Long userId);
