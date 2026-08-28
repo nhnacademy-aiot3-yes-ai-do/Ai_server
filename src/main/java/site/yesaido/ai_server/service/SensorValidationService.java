@@ -1,7 +1,6 @@
 package site.yesaido.ai_server.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -13,11 +12,13 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
-import site.yesaido.ai_server.dto.cultivation.CultivationDetailResponse;
-import site.yesaido.ai_server.dto.front.AiSensorResultDto;
-import site.yesaido.ai_server.dto.front.SensorRangeDto;
-import site.yesaido.ai_server.dto.front.SensorValidationRequest;
-import site.yesaido.ai_server.dto.front.SensorValidationResponse;
+import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import site.yesaido.ai_server.dto.ai.sensor_validation.AiSensorResultDto;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorRangeDto;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationRequest;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
 import site.yesaido.ai_server.exception.AiAnalysisFailedException;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
@@ -25,6 +26,7 @@ import site.yesaido.ai_server.reader.MushCsvReader;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -63,8 +65,73 @@ public class SensorValidationService {
 
     public SensorValidationResponse validateSensorThreshold(Long userId, Long cultivationId, SensorValidationRequest request) {
         CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
-        String mushroomName = findMushroomName(cultivation.mushroomId());
 
+        Long mushroomId = cultivation.mushroomId();
+        boolean isHarvestMode = "HARVEST".equalsIgnoreCase(cultivation.mode());
+
+        BigDecimal optimalMin;
+        BigDecimal optimalMax;
+
+        String targetMode = isHarvestMode ? "HARVEST" : "GROWTH"; // 재배지 모드 확인
+        // targetMode를 함께 넘겨서 DB에서 해당 단계의 임계값 매칭
+        Optional<MushroomReferenceThresholdInfoResponse> matchedDbThreshold = findDbThreshold(mushroomId, request.sensorTypeId(), targetMode);
+
+        if (matchedDbThreshold.isPresent()) {
+            // cultivation DB에 등록되어 있는 필수 센서(온도, 습도, co2, 조도)는 AI 호출하지 않고 바로 가져와서 사용
+            MushroomReferenceThresholdInfoResponse dbStandard = matchedDbThreshold.get();
+            optimalMin = dbStandard.thresholdMin();
+            optimalMax = dbStandard.thresholdMax();
+            log.info("[센서 검증] Cultivation DB 기준값 적용 (sensorTypeId: {}, 범위: {} ~ {})", request.sensorTypeId(), optimalMin, optimalMax);
+        }
+        else {
+            // cultivation DB에 없는 신규 센서는 AI 호출 후 Redis 캐싱
+            log.info("[센서 검증] DB에 없는 신규 센서(ID:{}, 이름:{})입니다. AI 분석을 실행합니다.", request.sensorTypeId(), request.sensorTypeName());
+            SensorRangeDto aiOptimalRange = getAiRecommendedRange(cultivation, request, isHarvestMode);
+            optimalMin = aiOptimalRange.min();
+            optimalMax = aiOptimalRange.max();
+        }
+
+        if(optimalMin.compareTo(optimalMax) >= 0) {
+            optimalMax = optimalMin.add(new BigDecimal("0.5"));
+        }
+
+        boolean isValid = true;
+        String feedbackMessage = "적절한 임계값입니다. 센서를 등록하셔도 좋습니다!";
+
+        // 유저 입력값이 추천 범위를 벗어났는지 확인 (느슨한 검증)
+        if (request.userMin().compareTo(optimalMin) < 0 || request.userMax().compareTo(optimalMax) > 0) {
+            String mushroomName = findMushroomName(mushroomId);
+            isValid = false;
+            feedbackMessage = String.format("입력하신 값이 권장 범위를 벗어납니다. %s의 권장 범위는 %s ~ %s 입니다.", mushroomName, optimalMin, optimalMax);
+        }
+        return new SensorValidationResponse(isValid, feedbackMessage, optimalMin, optimalMax);
+    }
+
+    // Cultivation DB에서 버섯, 센서 타입 일치하는 기준 값 찾기
+    private Optional<MushroomReferenceThresholdInfoResponse> findDbThreshold(Long mushroomId, Long sensorTypeId, String targetMode) {
+        try {
+            MushroomReferenceInfoListResponse response = cultivationClient.getMushroomReference();
+            if (response == null || response.mushroomReferenceInfoResponses() == null) {
+                return Optional.empty();
+            }
+
+            return response.mushroomReferenceInfoResponses().stream()
+                    .filter(m -> m.id() == mushroomId)
+                    .findFirst()
+                    .flatMap(m -> m.thresholdInfoResponses().stream()
+                            .filter(t -> t.sensorType() != null
+                                    && t.sensorType().id() == sensorTypeId
+                                    && targetMode.equalsIgnoreCase(t.thresholdType())) // 재배기,수확기 모드 일치 확인
+                            .findFirst());
+        } catch (Exception e) {
+            log.warn("Cultivation DB 기준 임계값 조회 실패. AI 분석으로 대체합니다. 원인: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    // 신규 센서용 AI 추천 및 Redis 캐싱 로직
+    private SensorRangeDto getAiRecommendedRange(CultivationDetailResponse cultivation, SensorValidationRequest request, boolean isHarvestMode) {
+        String mushroomName = findMushroomName(cultivation.mushroomId());
         String redisKey = REDIS_KEY + cultivation.mushroomId();
         HashOperations<String, String, String> hashOps = redisTemplate.opsForHash();
 
@@ -82,40 +149,17 @@ public class SensorValidationService {
 
         if (aiData == null || aiData.vegetativePhase().isEmpty()) {
             String sensorInfo = request.sensorTypeName() + " (" + request.sensorUnit() + ")";
-            String combinedData = findMushroomContext(cultivation.mushroomId()); // CSV 내용 추출
+            String combinedData = findMushroomContext(cultivation.mushroomId());
             aiData = callAiForRecommendations(mushroomName, combinedData, List.of(sensorIdStr + " : " + sensorInfo));
             cacheAiResultBySensor(redisKey, hashOps, aiData);
         }
 
-        // 재배지 모드(HARVEST or GROWTH)에 따라 적절한 추천 목록 선택
-        boolean isHarvestMode = "HARVEST".equalsIgnoreCase(cultivation.mode());
+        List<SensorRangeDto> targetPhaseList = isHarvestMode ? aiData.harvestPhase() : aiData.vegetativePhase();
 
-        List<SensorRangeDto> targetPhaseList = isHarvestMode
-                ? aiData.harvestPhase()       // 수확기 권장 범위
-                : aiData.vegetativePhase();   // 재배기 권장 범위
-
-        SensorRangeDto optimal = targetPhaseList.stream()
+        return targetPhaseList.stream()
                 .filter(s -> s.sensorTypeId().equals(request.sensorTypeId()))
                 .findFirst()
                 .orElseThrow(() -> new AiAnalysisFailedException(request.sensorTypeId()));
-
-        BigDecimal optimalMin = optimal.min();
-        BigDecimal optimalMax = optimal.max();
-        if(optimalMin.compareTo(optimalMax) >= 0) {
-            optimalMax = optimalMin.add(new BigDecimal("0.5"));
-        }
-
-        boolean isValid = true;
-        String feedbackMessage = "적절한 임계값입니다. 센서를 등록하셔도 좋습니다!";
-
-        // 유저 입력값이 추천 범위를 벗어났는지 확인 (느슨한 검증)
-        if (request.userMin().compareTo(optimalMin) < 0 || request.userMax().compareTo(optimalMax) > 0) {
-            isValid = false;
-            feedbackMessage = String.format("입력하신 값이 권장 범위를 벗어납니다. %s의 권장 범위는 %s ~ %s 입니다.",
-                    mushroomName, optimalMin, optimalMax);
-        }
-
-        return new SensorValidationResponse(isValid, feedbackMessage, optimalMin, optimalMax);
     }
 
     private AiSensorResultDto callAiForRecommendations(String mushroomName, String combinedData, List<String> sensorList) {
@@ -136,8 +180,8 @@ public class SensorValidationService {
                     .call()
                     .entity(AiSensorResultDto.class);
         } catch (Exception e) {
-            // 2차 시도: Gemini 429 쿼터 초과 또는 장애 발생 시 사내 Ollama로 자동 전환
-            log.warn("[AI 임계값 분석] Gemini 호출 실패(쿼터 초과/장애). 사내 Ollama(Qwen 3.5)로 Failover 전환합니다. 원인: {}", e.getMessage());
+            // 2차 시도: Gemini 장애 발생 시 사내 Ollama로 자동 전환
+            log.warn("[AI 임계값 분석] Gemini 호출 실패. Ollama(Qwen 3.5)로 전환합니다. 원인: {}", e.getMessage());
             try {
                 return ollamaChatClient.prompt()
                         .system(sys -> sys.text(systemResource))

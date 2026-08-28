@@ -3,7 +3,7 @@ package site.yesaido.ai_server.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import site.yesaido.ai_server.dto.ai.mush_summary.ApiResponse;
+import site.yesaido.ai_server.dto.common.ApiResponse;
 import site.yesaido.ai_server.service.MushVectorService;
 
 @RestController

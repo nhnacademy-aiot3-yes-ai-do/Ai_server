@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.vision.response;
+package site.yesaido.ai_server.dto.client.vision;
 
 import java.util.List;
 
@@ -18,7 +18,7 @@ import java.util.List;
  * @param bbox 같은 품종의 모든 탐지 영역을 합친 원본 이미지 좌표 ({@code [xMin, yMin, xMax, yMax]})
  * @param cropBbox 건강 분류용 여백을 포함한 원본 이미지 좌표 ({@code [xMin, yMin, xMax, yMax]})
  */
-public record Result(
+public record Result( // 비전 모델 응답
         String species,
         String speciesCode,
         int speciesClassId,

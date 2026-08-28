@@ -1,4 +1,4 @@
-package site.yesaido.ai_server.dto.vision.response;
+package site.yesaido.ai_server.dto.client.vision;
 
 import java.util.List;
 
@@ -13,7 +13,7 @@ import java.util.List;
  * @param results 같은 품종끼리 묶어 분석한 결과 목록
  * @param warnings 미탐지, 낮은 신뢰도, 주의사항 등을 설명하는 메시지 목록
  */
-public record VisionResponse(
+public record VisionResponse( // 비전 모델 응답
         String analysisType,
         String status,
         String detectorModel,

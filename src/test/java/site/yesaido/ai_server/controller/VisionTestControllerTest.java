@@ -8,7 +8,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import site.yesaido.ai_server.dto.vision.response.VisionResponse;
+import site.yesaido.ai_server.dto.client.vision.VisionResponse;
 import site.yesaido.ai_server.service.VisionRelayService;
 
 import java.util.List;

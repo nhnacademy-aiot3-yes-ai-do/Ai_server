@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import site.yesaido.ai_server.client.VisionClient;
-import site.yesaido.ai_server.dto.vision.response.VisionResponse;
+import site.yesaido.ai_server.dto.client.vision.VisionResponse;
 
 @Service
 @RequiredArgsConstructor

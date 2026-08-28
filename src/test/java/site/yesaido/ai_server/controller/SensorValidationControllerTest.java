@@ -8,8 +8,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import site.yesaido.ai_server.dto.front.SensorValidationRequest;
-import site.yesaido.ai_server.dto.front.SensorValidationResponse;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationRequest;
+import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
 import site.yesaido.ai_server.service.SensorValidationService;
 
 import java.math.BigDecimal;
