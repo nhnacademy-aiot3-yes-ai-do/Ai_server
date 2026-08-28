@@ -4,11 +4,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
 import java.util.List;
 import java.util.Optional;
 
+@Repository
 public interface InsightRepository extends JpaRepository<Insight,Long> {
     Optional<Insight> findByCultivationId(Long cultivationId); // 중복 적제 방지
 

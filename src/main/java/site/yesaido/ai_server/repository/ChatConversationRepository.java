@@ -2,10 +2,12 @@ package site.yesaido.ai_server.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
 import site.yesaido.ai_server.entity.ChatConversation;
 
 import java.util.Optional;
 
+@Repository
 public interface ChatConversationRepository extends JpaRepository<ChatConversation, Long> {
     // 사용자 ID로 1:1 전담 대화방 조회
     // 웹, 디스코드, 텔레그램 어디서 접속하든 이전 대화 맥락 이어갈 수 있게 하기 위해 사용

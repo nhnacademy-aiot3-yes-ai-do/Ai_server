@@ -21,8 +21,10 @@ public class ChatMessage {
     @Column(name = "chat_conversation_id", nullable = false)
     private Long chatConversationId;
 
+    // JPA EnumType.STRING을 통해 DB에는 VARCHAR로 안전하게 저장
+    @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
-    private String role; // "USER" or "ASSISTANT"
+    private MessageRole role; // "USER" or "ASSISTANT"
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -34,7 +36,7 @@ public class ChatMessage {
     private LocalDateTime createdAt;
 
     @Builder
-    public ChatMessage(Long chatConversationId, String role, String content, Long sequenceNumber) {
+    public ChatMessage(Long chatConversationId, MessageRole role, String content, Long sequenceNumber) {
         this.chatConversationId = chatConversationId;
         this.role = role;
         this.content = content;
