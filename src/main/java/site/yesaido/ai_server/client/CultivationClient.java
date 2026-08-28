@@ -50,7 +50,7 @@ public interface CultivationClient {
     DailyCultivationPhotoListResponse getDailyCultivationPhotos(
             @RequestParam("date")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate localDate
+            LocalDate targetDate
     );
 
 }
