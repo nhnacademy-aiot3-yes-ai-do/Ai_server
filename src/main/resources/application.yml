@@ -65,7 +65,7 @@ spring:
       genai:
         api-key: ${GEMINI_API_KEY}
         chat:
-          model: gemini-3.6-flash
+          model: gemini-2.5-flash
           temperature: 0.0
 
   rabbitmq:
