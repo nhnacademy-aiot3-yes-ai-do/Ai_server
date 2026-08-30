@@ -15,12 +15,8 @@ public class VisionAnalysisException extends CustomServerException {
             "Vision 분석 결과를 처리하지 못했습니다.";
 
     public VisionAnalysisException(Long photoId, Reason reason) {
-        super(
-                USER_MESSAGE,
-                "Vision 분석 결과 처리 실패: photoId=%s, reason=%s"
-                        .formatted(photoId, reason),
-                ServerErrorLevel.ERROR_LEVEL
-        );
+        super(USER_MESSAGE, "Vision 분석 결과 처리 실패: photoId=%s, reason=%s"
+                .formatted(photoId, reason), ServerErrorLevel.ERROR_LEVEL);
     }
 
     /**

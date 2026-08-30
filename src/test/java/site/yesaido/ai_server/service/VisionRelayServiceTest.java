@@ -56,51 +56,21 @@ class VisionRelayServiceTest {
     private static final Long CULTIVATION_ID = 7L;
     private static final Long PHOTO_ID = 42L;
 
-    private static final String ANALYSIS_TYPE =
-            "MUSHROOM_HEALTH_CHECK_V1";
-
-    private static final String SUCCESS =
-            "SUCCESS";
-
-    private static final String NO_MUSHROOM_DETECTED =
-            "NO_MUSHROOM_DETECTED";
-
-    private static final String HEALTHY =
-            "HEALTHY";
-
-    private static final String DISEASE_SUSPECTED =
-            "DISEASE_SUSPECTED";
-
-    private static final String UNCERTAIN =
-            "UNCERTAIN";
-
-    private static final String USER_MESSAGE =
-            "Vision 분석 결과를 처리하지 못했습니다.";
-
-    private static final String PRESIGNED_URL =
-            "https://storage.test/photos/42.jpg"
-                    + "?X-Amz-Signature=fake-signature";
-
-    private static final String SIGNATURE_PARAMETER =
-            "X-Amz-Signature";
-
-    private static final String FAKE_SIGNATURE =
-            "fake-signature";
-
-    private static final String EXTERNAL_SERIALIZATION_DETAIL =
-            "external-serialization-secret";
-
-    private static final String EXTERNAL_RESPONSE_DETAIL =
-            "external-vision-response-secret";
-
-    private static final String DATABASE_FAILURE_DETAIL =
-            "external-database-constraint-detail";
-
-    private static final List<Integer> VALID_BBOX =
-            List.of(10, 20, 110, 220);
-
-    private static final List<Integer> VALID_CROP_BBOX =
-            List.of(5, 15, 115, 225);
+    private static final String ANALYSIS_TYPE = "MUSHROOM_HEALTH_CHECK_V1";
+    private static final String SUCCESS = "SUCCESS";
+    private static final String NO_MUSHROOM_DETECTED = "NO_MUSHROOM_DETECTED";
+    private static final String HEALTHY = "HEALTHY";
+    private static final String DISEASE_SUSPECTED = "DISEASE_SUSPECTED";
+    private static final String UNCERTAIN = "UNCERTAIN";
+    private static final String USER_MESSAGE = "Vision 분석 결과를 처리하지 못했습니다.";
+    private static final String PRESIGNED_URL = "https://storage.test/photos/42.jpg?X-Amz-Signature=fake-signature";
+    private static final String SIGNATURE_PARAMETER = "X-Amz-Signature";
+    private static final String FAKE_SIGNATURE = "fake-signature";
+    private static final String EXTERNAL_SERIALIZATION_DETAIL = "external-serialization-secret";
+    private static final String EXTERNAL_RESPONSE_DETAIL = "external-vision-response-secret";
+    private static final String DATABASE_FAILURE_DETAIL = "external-database-constraint-detail";
+    private static final List<Integer> VALID_BBOX = List.of(10, 20, 110, 220);
+    private static final List<Integer> VALID_CROP_BBOX = List.of(5, 15, 115, 225);
 
     @Mock
     private VisionClient visionClient;
@@ -1904,14 +1874,8 @@ class VisionRelayServiceTest {
         return Stream.of(
                 new InvalidProbability("null", null),
                 new InvalidProbability("NaN", Double.NaN),
-                new InvalidProbability(
-                        "양의 Infinity",
-                        Double.POSITIVE_INFINITY
-                ),
-                new InvalidProbability(
-                        "음의 Infinity",
-                        Double.NEGATIVE_INFINITY
-                ),
+                new InvalidProbability("양의 Infinity", Double.POSITIVE_INFINITY),
+                new InvalidProbability("음의 Infinity", Double.NEGATIVE_INFINITY),
                 new InvalidProbability("0.0 미만", -0.01),
                 new InvalidProbability("1.0 초과", 1.01)
         );
@@ -1921,14 +1885,8 @@ class VisionRelayServiceTest {
     invalidPresentProbabilityValues() {
         return Stream.of(
                 new InvalidProbability("NaN", Double.NaN),
-                new InvalidProbability(
-                        "양의 Infinity",
-                        Double.POSITIVE_INFINITY
-                ),
-                new InvalidProbability(
-                        "음의 Infinity",
-                        Double.NEGATIVE_INFINITY
-                ),
+                new InvalidProbability("양의 Infinity", Double.POSITIVE_INFINITY),
+                new InvalidProbability("음의 Infinity", Double.NEGATIVE_INFINITY),
                 new InvalidProbability("0.0 미만", -0.01),
                 new InvalidProbability("1.0 초과", 1.01)
         );
