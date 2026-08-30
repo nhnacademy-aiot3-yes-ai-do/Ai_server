@@ -8,6 +8,7 @@ public class VectorDbException extends CustomServerException {
         super("Vector DB 처리 중 오류가 발생했습니다.", cause, ServerErrorLevel.ERROR_LEVEL);
     }
 
-    public VectorDbException(String message, Throwable cause) { super(message, cause, ServerErrorLevel.ERROR_LEVEL);
+    public VectorDbException(String message, Throwable cause) {
+        super(message, cause, ServerErrorLevel.ERROR_LEVEL);
   }
 }
