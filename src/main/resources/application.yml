@@ -81,5 +81,8 @@ feign:
     vision-server:
       url: ${VISION_SERVER_URL}
 
+image-download:
+  allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}
+
 server:
   port: 8080

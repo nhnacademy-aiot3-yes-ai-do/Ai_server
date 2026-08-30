@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -16,7 +17,30 @@ import site.yesaido.ai_server.entity.GrowthRecord;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DataJpaTest
+/**
+ * 실제 PostgreSQL의 JSONB 저장 및 타입을 검증하기 위한 Repository 테스트입니다.
+ *
+ * create-drop은 격리된 localhost의 testdb에서만 허용합니다.
+ * inline datasource 설정이 원격 DB 환경변수보다 우선하므로 공유 DB 오접속을 차단합니다.
+ * 환경변수 조건이 일치하지 않으면 Spring Context가 생성되기 전에 테스트가 skip됩니다.
+ */
+@EnabledIfEnvironmentVariable(
+        named = "DB_HOST",
+        matches = "^(localhost|127\\.0\\.0\\.1)$"
+)
+@EnabledIfEnvironmentVariable(
+        named = "DB_NAME",
+        matches = "^testdb$"
+)
+@DataJpaTest(properties = {
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.datasource.url="
+                + "jdbc:postgresql://127.0.0.1:5432/testdb"
+                + "?currentSchema=public",
+        // CI 전용 PostgreSQL 컨테이너의 테스트 계정이며 운영 비밀정보가 아닙니다.
+        "spring.datasource.username=test",
+        "spring.datasource.password=test1234"
+})
 @AutoConfigureTestDatabase(
         replace = AutoConfigureTestDatabase.Replace.NONE
 )
@@ -40,37 +64,37 @@ class GrowthRecordRepositoryTest {
     @DisplayName("GrowthRecord를 저장하고 cultivationPhotoId로 JSONB 데이터를 재조회한다")
     void savesAndFindsGrowthRecordByCultivationPhotoId() throws JsonProcessingException {
         JsonNode analysisData = objectMapper.readTree("""
-                    {
-                      "analysisType": "MUSHROOM_HEALTH_CHECK_V1",
-                      "status": "SUCCESS",
-                      "detectorModel": "mushroom-detector-v1",
-                      "healthModel": "mushroom-health-v1",
-                      "thresholds": {
-                        "detection": 0.25,
-                        "minDetectionConfidence": 0.5,
-                        "healthUncertain": 0.7
-                      },
-                      "results": [
-                        {
-                          "species": "느타리",
-                          "speciesCode": "OYSTER",
-                          "speciesClassId": 0,
-                          "detectedCount": 2,
-                          "detectionConfidence": 0.97,
-                          "detectionConfidenceMin": 0.45,
-                          "healthStatus": "UNCERTAIN",
-                          "healthConfidence": null,
-                          "healthyProbability": null,
-                          "diseaseSuspectedProbability": null,
-                          "bbox": [100, 120, 420, 560],
-                          "cropBbox": [80, 100, 440, 580]
-                        }
-                      ],
-                      "warnings": [
-                        "최저 탐지 신뢰도가 기준보다 낮아 건강 분류를 생략했습니다."
-                      ]
-                    }
-                    """);
+                      {
+                        "analysisType": "MUSHROOM_HEALTH_CHECK_V1",
+                        "status": "SUCCESS",
+                        "detectorModel": "mushroom-detector-v1",
+                        "healthModel": "mushroom-health-v1",
+                        "thresholds": {
+                          "detection": 0.25,
+                          "minDetectionConfidence": 0.5,
+                          "healthUncertain": 0.7
+                        },
+                        "results": [
+                          {
+                            "species": "느타리",
+                            "speciesCode": "OYSTER",
+                            "speciesClassId": 0,
+                            "detectedCount": 2,
+                            "detectionConfidence": 0.97,
+                            "detectionConfidenceMin": 0.45,
+                            "healthStatus": "UNCERTAIN",
+                            "healthConfidence": null,
+                            "healthyProbability": null,
+                            "diseaseSuspectedProbability": null,
+                            "bbox": [100, 120, 420, 560],
+                            "cropBbox": [80, 100, 440, 580]
+                          }
+                        ],
+                        "warnings": [
+                          "최저 탐지 신뢰도가 기준보다 낮아 건강 분류를 생략했습니다."
+                        ]
+                      }
+                      """);
 
         GrowthRecord growthRecord = GrowthRecord.builder()
                 .cultivationId(9_000_000_000_000_101L)

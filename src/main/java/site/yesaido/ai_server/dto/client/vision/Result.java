@@ -4,6 +4,7 @@ import java.util.List;
 
 /**
  * 같은 품종으로 탐지된 버섯들을 하나로 묶어 분석한 결과이다.
+ * 필수 숫자 필드의 null 여부와 값의 범위는 서비스 경계에서 검증한다.
  *
  * @param species 탐지된 버섯 품종 이름
  * @param speciesCode 서비스 간 계약에서 사용하는 안정적인 품종 코드
@@ -21,10 +22,10 @@ import java.util.List;
 public record Result( // 비전 모델 응답
         String species,
         String speciesCode,
-        int speciesClassId,
-        int detectedCount,
-        double detectionConfidence,
-        double detectionConfidenceMin,
+        Integer speciesClassId,
+        Integer detectedCount,
+        Double detectionConfidence,
+        Double detectionConfidenceMin,
         String healthStatus,
         Double healthConfidence,
         Double healthyProbability,
