@@ -23,9 +23,15 @@ runs:
         echo "RABBITMQ_PORT=5672" >> "$GITHUB_ENV"
         echo "RABBITMQ_USERNAME=test" >> "$GITHUB_ENV"
         echo "RABBITMQ_PASSWORD=test1234" >> "$GITHUB_ENV"
+        
+        # Gemini
+        echo "GEMINI_API_KEY=test1234" >> "$GITHUB_ENV"
 
         # Openfeign
         echo "CULTIVATION_SERVER_URL=http://localhost:8084" >> "$GITHUB_ENV"
 
         # Vision
         echo "VISION_SERVER_URL=http://vision-test.invalid" >> "$GITHUB_ENV"
+        
+        # Minio
+        echo "IMAGE_DOWNLOAD_ALLOWED_ORIGIN=http://storage.java21.net:9999" >> "$GITHUB_ENV"
