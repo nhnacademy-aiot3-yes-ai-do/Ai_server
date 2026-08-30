@@ -10,7 +10,16 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 @Entity
-@Table(name = "chat_conversation")
+@Table(
+        name = "chat_conversation",
+        uniqueConstraints = {
+                // 외부 통신용 세션 UUID 무결성 보장
+                @UniqueConstraint(
+                        name = "uk_chat_conversation_external_id",
+                        columnNames = "external_conversation_id"
+                )
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatConversation { // 대화방 entity
@@ -28,7 +37,7 @@ public class ChatConversation { // 대화방 entity
     @Column(name = "channel_id", nullable = false)
     private Long channelId; // 1: 웹 대시보드, 2: 디스코드, 3: 텔레그램
 
-    @Column(name = "external_conversation_id", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "external_conversation_id", nullable = false, length = 36)
     private String externalConversationId; // 프론트와 통신할 세션 UUID
 
     @Column(name = "created_at", nullable = false, updatable = false)

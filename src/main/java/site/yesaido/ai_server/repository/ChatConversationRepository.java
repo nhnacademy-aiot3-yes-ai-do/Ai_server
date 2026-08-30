@@ -2,6 +2,7 @@ package site.yesaido.ai_server.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import site.yesaido.ai_server.entity.ChatConversation;
 
@@ -20,9 +21,13 @@ public interface ChatConversationRepository extends JpaRepository<ChatConversati
     // 프론트엔드 세션 식별자(UUID)로 기존 대화방 찾을 떄 사용
     Optional<ChatConversation> findByExternalConversationId(String externalConversationId);
 
-    // 사용자와 특정 경작지로 가장 최근 대화방 세션 복원하는데 사용
-    @Query("SELECT c FROM ChatConversation c WHERE c.userId = :userId AND c.cultivationId = :cultivationId ORDER BY c.updatedAt DESC LIMIT 1")
-    Optional<ChatConversation> findLatestByCultivation(Long userId, Long cultivationId);
+    // 사용자와 특정 채널 및 경작지 기준 최근 대화방 조회(채널 간 대화 뒤섞이는거 방지)
+    @Query("SELECT c FROM ChatConversation c WHERE c.userId = :userId AND c.cultivationId = :cultivationId AND c.channelId = :channelId ORDER BY c.updatedAt DESC LIMIT 1")
+    Optional<ChatConversation> findLatestByCultivation(
+            @Param("userId") Long userId,
+            @Param("cultivationId") Long cultivationId,
+            @Param("channelId") Long channelId
+    );
 
     // 해당 사용자의 대화방이 이미 존재하는지 여부 확인
     boolean existsByUserId(Long userId);
