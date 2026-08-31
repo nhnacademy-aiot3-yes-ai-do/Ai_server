@@ -13,9 +13,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
-import site.yesaido.ai_server.dto.cultivation.*;
+import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
+import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
+import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageResponse;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import site.yesaido.ai_server.repository.InsightRepository;
@@ -237,17 +240,16 @@ public class InsightService {
     private List<Long> getMyCultivation(Long userId){
         if (userId == null) return List.of(-1L);
         try {
-            // 내 재배 ID 리스트를 가져오기
-            CultivationClient client = Objects.requireNonNull(cultivationClient);
-            List<Long> ids = client.getUserCultivationIds(userId);
-
-            if(ids == null){
+            CultivationSummaryListResponse res = cultivationClient.getCultivations(userId);
+            if (res == null || res.cultivationSummaryResponses() == null) {
                 return List.of(-1L);
             }
-            // List 내부의 null 요소 걸러내기
-            List<Long> validIds = ids.stream().filter(Objects::nonNull).toList();
+            List<Long> validIds = res.cultivationSummaryResponses().stream()
+                    .map(site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryResponse::cultivationId)
+                    .filter(Objects::nonNull)
+                    .toList();
+            
 
-            // null 제거한 후 비어있으면 ID(-1L) 반환
             return validIds.isEmpty() ? List.of(-1L) : validIds;
         } catch (Exception e) {
             log.warn("사용자 재배 목록 조회 실패 (userId={}). 기본 방어 ID(-1L) 사용", userId, e);

@@ -65,7 +65,7 @@ spring:
       genai:
         api-key: ${GEMINI_API_KEY}
         chat:
-          model: gemini-3.6-flash
+          model: gemini-2.5-flash-lite
           temperature: 0.0
 
   rabbitmq:
@@ -80,6 +80,9 @@ feign:
       url: ${CULTIVATION_SERVER_URL}
     vision-server:
       url: ${VISION_SERVER_URL}
+
+image-download:
+  allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}
 
 server:
   port: 8080

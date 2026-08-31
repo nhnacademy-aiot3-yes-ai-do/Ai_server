@@ -31,6 +31,9 @@ class MushServiceTest {
     @Mock
     private MushCsvReader mushCsvReader;
 
+    @Mock
+    private site.yesaido.ai_server.client.CultivationClient cultivationClient;
+
     @InjectMocks
     private MushService mushService;
 
@@ -101,6 +104,59 @@ class MushServiceTest {
                 cultivationCond,
                 harvestCond,
                 List.of()
+        );
+
+        // 3. CultivationClient 가짜 응답 설정 (GROWTH + HARVEST 모두 설정)
+        List<site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse> mockThresholds = List.of(
+                // 재배기 (GROWTH)
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        101L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(1L, "TEMPERATURE", "°C"),
+                        "GROWTH",
+                        java.math.BigDecimal.valueOf(18.0), java.math.BigDecimal.valueOf(24.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        102L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(2L, "HUMIDITY", "%"),
+                        "GROWTH",
+                        java.math.BigDecimal.valueOf(80.0), java.math.BigDecimal.valueOf(90.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        103L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(3L, "CO2", "ppm"),
+                        "GROWTH",
+                        java.math.BigDecimal.valueOf(800.0), java.math.BigDecimal.valueOf(1200.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        104L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(4L, "LIGHT", "lux"),
+                        "GROWTH",
+                        java.math.BigDecimal.valueOf(100.0), java.math.BigDecimal.valueOf(500.0)),
+                // 수확기 (HARVEST)
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        105L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(1L, "TEMPERATURE", "°C"),
+                        "HARVEST",
+                        java.math.BigDecimal.valueOf(15.0), java.math.BigDecimal.valueOf(18.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        106L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(2L, "HUMIDITY", "%"),
+                        "HARVEST",
+                        java.math.BigDecimal.valueOf(85.0), java.math.BigDecimal.valueOf(95.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        107L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(3L, "CO2", "ppm"),
+                        "HARVEST",
+                        java.math.BigDecimal.valueOf(1000.0), java.math.BigDecimal.valueOf(1500.0)),
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        108L,
+                        new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(4L, "LIGHT", "lux"),
+                        "HARVEST",
+                        java.math.BigDecimal.valueOf(100.0), java.math.BigDecimal.valueOf(300.0))
+        );
+        site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse mockRef =
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse(
+                        1L, "느타리버섯", "Oyster mushroom", "Pleurotus ostreatus", mockThresholds
+                );
+        given(cultivationClient.getMushroomReference()).willReturn(
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse(List.of(mockRef))
         );
         // 체이닝 중간 통로 가짜 객체 생성
         ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class);

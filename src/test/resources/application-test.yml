@@ -2,3 +2,6 @@ feign:
   client:
     vision-server:
       url: "http://vision-test.invalid"
+
+image-download:
+  allowed-origin: "https://storage.test"
