@@ -174,7 +174,9 @@ class InsightServiceTest {
     @Test
     @DisplayName("유사 인사이트 후보 5개 정상 조회 검증 (내 재배 제외)")
     void InsightCandidatesSuccessTest() {
-        when(cultivationClient.getUserCultivationIds(100L)).thenReturn(List.of(10L, 20L));
+        CultivationSummaryResponse c1 = new CultivationSummaryResponse(10L, "재배1", 2L, "CULTIVATING", "GROWTH", 1, "유저", null);
+        CultivationSummaryResponse c2 = new CultivationSummaryResponse(20L, "재배2", 2L, "CULTIVATING", "GROWTH", 1, "유저", null);
+        when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of(c1, c2)));
         when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any(Pageable.class))).thenReturn(List.of());
 
         List<InsightCandidateResponse> result = insightService.getInsightCandidates(
@@ -192,7 +194,7 @@ class InsightServiceTest {
     @Test
     @DisplayName("내 재배 목록 조회 실패(예외 발생) 시 방어 ID(-1L)를 사용해 정상 조회 검증")
     void myCultivationCheckTest() {
-        when(cultivationClient.getUserCultivationIds(100L)).thenThrow(new RuntimeException("통신 실패"));
+        when(cultivationClient.getCultivations(100L)).thenThrow(new RuntimeException("통신 실패"));
         when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any(Pageable.class))).thenReturn(List.of());
 
         List<InsightCandidateResponse> result = insightService.getInsightCandidates(

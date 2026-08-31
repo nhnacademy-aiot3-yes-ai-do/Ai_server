@@ -2,7 +2,10 @@ package site.yesaido.ai_server.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -24,7 +27,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = {@Autowired})
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 public class VisionRelayService {
 
     private static final String MUSHROOM_HEALTH_CHECK_V1 = "MUSHROOM_HEALTH_CHECK_V1";
@@ -200,7 +204,7 @@ public class VisionRelayService {
     }
 
     private GrowthRecord returnMatchingExistingOrThrow(Long photoId, Long cultivationId, Optional<GrowthRecord> existingRecord) {
-        return existingRecord.filter(record -> Objects.equals(cultivationId, record.getCultivationId()))
+        return existingRecord.filter(existing -> Objects.equals(cultivationId, existing.getCultivationId()))
                 .orElseThrow(() -> new VisionAnalysisException(photoId, Reason.IDEMPOTENCY_CONFLICT));
     }
 

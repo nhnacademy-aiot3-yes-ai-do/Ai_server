@@ -12,21 +12,12 @@ import org.springframework.context.annotation.Primary;
 public class ChatClientConfig {
 
     @Bean
-    @Primary // 버섯 정보 요약, 센서 임계값 검증 전용 Client
-    public ChatClient precisionChatClient(@Qualifier("googleGenAiChatModel") ChatModel geminiModel) {
-        return ChatClient.builder(geminiModel)
-                .defaultOptions(GoogleGenAiChatOptions.builder()
-                        .model("gemini-2.5-flash")
-                        .temperature(0.0))
-                .build();
-    }
-
-    @Bean // 챗봇용 Client
-    public ChatClient fastChatbotClient(@Qualifier("googleGenAiChatModel") ChatModel geminiModel) {
+    @Primary
+    public ChatClient geminiChatClient(@Qualifier("googleGenAiChatModel") ChatModel geminiModel) {
         return ChatClient.builder(geminiModel)
                 .defaultOptions(GoogleGenAiChatOptions.builder()
                         .model("gemini-2.5-flash-lite")
-                        .temperature(0.25))
+                        .temperature(0.0))
                 .build();
     }
 

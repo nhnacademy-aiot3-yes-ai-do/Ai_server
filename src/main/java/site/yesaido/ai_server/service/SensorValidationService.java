@@ -49,7 +49,7 @@ public class SensorValidationService {
     private static final String REDIS_KEY =  "mushroom:sensor:validation:";
 
     public SensorValidationService(
-            @Qualifier("precisionChatClient") ChatClient geminiChatClient,
+            @Qualifier("geminiChatClient") ChatClient geminiChatClient,
             @Qualifier("ollamaChatClient") ChatClient ollamaChatClient,
             CultivationClient cultivationClient,
             ObjectMapper objectMapper,

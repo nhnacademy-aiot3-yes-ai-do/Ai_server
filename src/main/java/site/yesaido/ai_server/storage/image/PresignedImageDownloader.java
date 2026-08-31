@@ -29,7 +29,8 @@ public class PresignedImageDownloader {
     private static final int DEFAULT_HTTPS_PORT = 443;
     private static final String MULTIPART_NAME = "image";
     private static final String INVALID_ALLOWED_ORIGIN_MESSAGE = "이미지 다운로드 허용 origin 설정이 올바르지 않습니다.";
-    private static final MediaType IMAGE_WEBP = MediaType.parseMediaType("image/webp");
+    private static final String IMAGE_WEBP_VALUE = "image/webp";
+    private static final MediaType IMAGE_WEBP = MediaType.parseMediaType(IMAGE_WEBP_VALUE);
 
     private final RestClient restClient;
     private final URI allowedOrigin;
@@ -232,7 +233,7 @@ public class PresignedImageDownloader {
         return switch (normalizedContentType) {
             case MediaType.IMAGE_JPEG_VALUE -> new ImageFormat(MediaType.IMAGE_JPEG_VALUE, ".jpg");
             case MediaType.IMAGE_PNG_VALUE -> new ImageFormat(MediaType.IMAGE_PNG_VALUE, ".png");
-            case "image/webp" -> new ImageFormat("image/webp", ".webp");
+            case IMAGE_WEBP_VALUE -> new ImageFormat(IMAGE_WEBP_VALUE, ".webp");
             default -> throw new ImageDownloadException(photoId, ImageDownloadException.Reason.UNSUPPORTED_CONTENT_TYPE);
         };
     }
