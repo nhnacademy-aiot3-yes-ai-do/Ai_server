@@ -33,10 +33,11 @@ public class ChatController {
     @GetMapping("/history")
     public ApiResponse<List<ChatMessageDto>> getConversationHistory(
             @RequestHeader("X-User-Id") Long userId,
-            @RequestParam("conversationId") Long conversationId
+            @RequestParam(value = "conversationId", required = false) Long conversationId,
+            @RequestParam(value = "cultivationId", required = false) Long cultivationId
     ) {
-        log.info("챗봇 대화 이력 조회 API 호출 - userId: {}, conversationId: {}", userId, conversationId);
-        List<ChatMessageDto> history = chatbotService.getConversationHistory(userId, conversationId);
+        log.info("챗봇 대화 이력 조회 API 호출 - userId: {}, conversationId: {}, cultivationId: {}", userId, conversationId, cultivationId);
+        List<ChatMessageDto> history = chatbotService.getConversationHistory(userId, conversationId, cultivationId);
         return ApiResponse.success(history);
-    }
+    } 
 }

@@ -1,5 +1,7 @@
 package site.yesaido.ai_server.service;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -8,6 +10,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
@@ -31,10 +34,10 @@ import java.util.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
 public class ChatbotService {
-    private final ChatClient fastChatbotClient; // Gemini 2.5 Flash Lite
-    private final ChatClient ollamaChatClient; // Ollama
+    private final ChatClient geminiChatClient; // Gemini 2.5 Flash Lite
 
     private final ChatConversationRepository conversationRepository;
     private final ChatMessageRepository messageRepository;
@@ -86,7 +89,7 @@ public class ChatbotService {
 
             Prompt prompt = new Prompt(fullMessages);
 
-            Optional<String> replyOpt = callAiWithFallback(prompt);
+            Optional<String> replyOpt = callAi(prompt);
             if (replyOpt.isEmpty()) {
                 return new ChatMessageResponse(
                         conversation.getId(),
@@ -126,13 +129,18 @@ public class ChatbotService {
 
     // 특정 대화방의 과거 전체 대화 이력 조회 (화면 복원하는데 사용)
     @Transactional(readOnly = true)
-    public List<ChatMessageDto> getConversationHistory(Long userId, Long conversationId) {
-        // 히스토리 조회 시에도 본인 대화방인지 검증
-        ChatConversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
-        .orElseThrow(() -> new IllegalArgumentException("해당 대화방에 접근할 수 없거나 존재하지 않습니다. ID: " + conversationId));
-        return messageRepository.findAllMessages(conversation.getId()).stream()
-        .map(ChatMessageDto::from).toList();
+    public List<ChatMessageDto> getConversationHistory(Long userId, Long conversationId, Long cultivationId) {
+        Optional<ChatConversation> convOpt;
+        if (conversationId != null) {
+            convOpt = conversationRepository.findByIdAndUserId(conversationId, userId);
+        } else if (cultivationId != null) {
+            convOpt = conversationRepository.findLatestByCultivation(userId, cultivationId, 1L);
+        } else {
+            convOpt = conversationRepository.findByUserIdAndChannelId(userId, 1L);
         }
+        return convOpt.map(conv -> messageRepository.findAllMessages(conv.getId()).stream()
+                .map(ChatMessageDto::from).toList()).orElseGet(List::of);
+    }
     // 대화방 세션 조회 또는 신규 생성 로직
     private ChatConversation getOrCreateConversation(Long userId, Long cultivationId, Long channelId, Long conversationId) {
         Long targetChannel = channelId != null ? channelId : 1L; // 기본값: 웹(1L)
@@ -181,10 +189,10 @@ public class ChatbotService {
     }
 
     // Gemini 2.5 Flash Lite 호출 (3대 Tools 포함) -> 장애 시 로컬 Ollama 자동 사용
-    private Optional<String> callAiWithFallback(Prompt prompt) {
+    private Optional<String> callAi(Prompt prompt) {
         try {
             log.info("Gemini 2.5 Flash Lite 호출 시작 (3대 도구 연동)");
-            String response = fastChatbotClient.prompt(prompt)
+            String response = geminiChatClient.prompt(prompt)
                     .tools(mushroomKnowledgeTool, environmentTool, pastHarvestInsightTool)
                     .call()
                     .content();
@@ -192,20 +200,8 @@ public class ChatbotService {
             if (response != null && !response.isBlank()) {
                 return Optional.of(response);
             }
-            log.warn("Gemini 응답이 비어있어 Ollama 로컬 폴백을 시도합니다.");
         } catch (Exception e) {
-            log.error("Gemini 2.5 Flash Lite 호출 실패: {} -> 로컬 Ollama로 자동 폴백합니다.", e.getMessage());
-        }
-
-        // Gemini 작동 안될 시 Ollama 호출
-        try {
-            log.info("Ollama 로컬 모델(qwen3.5:9b) 비상 응답 생성 시작");
-            String response = ollamaChatClient.prompt(prompt).call().content();
-            if (response != null && !response.isBlank()) {
-                return Optional.of(response);
-            }
-        } catch (Exception ex) {
-            log.error("Ollama 폴백 호출까지 최종 실패: {}", ex.getMessage(), ex);
+            log.error("Gemini 2.5 Flash Lite 호출 실패: {}", e.getMessage(), e);
         }
         return Optional.empty();
     }

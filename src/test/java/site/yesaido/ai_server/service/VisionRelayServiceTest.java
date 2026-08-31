@@ -414,41 +414,9 @@ class VisionRelayServiceTest {
         assertInvalidVisionResponse(response);
     }
 
-    @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource("invalidRequiredNumericResults")
-    @DisplayName("Result의 필수 숫자가 null이거나 유효 범위를 벗어나면 거부한다")
-    void rejectInvalidRequiredResultNumbers(
-            String description,
-            Result invalidResult
-    ) {
-        // Given: 필수 숫자 계약을 위반한 Result가 주어진다.
 
-        // When: 해당 Result가 포함된 SUCCESS 응답을 처리한다.
 
-        // Then: 자동 언박싱 NPE 없이 응답 계약 오류로 처리한다.
-        assertThat(description)
-                .isNotBlank();
 
-        assertInvalidResult(invalidResult);
-    }
-
-    @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource("invalidStructuredResults")
-    @DisplayName("Result의 문자열, 상태 또는 경계 상자 계약이 잘못되면 거부한다")
-    void rejectInvalidResultStructure(
-            String description,
-            Result invalidResult
-    ) {
-        // Given: 문자열, 상태 또는 bbox 계약을 위반한 Result가 주어진다.
-
-        // When: 해당 Result를 분석 결과로 처리한다.
-
-        // Then: 저장하지 않고 응답 계약 오류로 처리한다.
-        assertThat(description)
-                .isNotBlank();
-
-        assertInvalidResult(invalidResult);
-    }
 
     @ParameterizedTest(name = "[{index}] {0}")
     @MethodSource("validHealthProbabilityCombinations")
@@ -480,20 +448,17 @@ class VisionRelayServiceTest {
     }
 
     @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource("invalidHealthProbabilityCombinations")
-    @DisplayName("허용되지 않는 건강 상태와 확률 조합을 거부한다")
-    void rejectInvalidHealthProbabilityCombination(
+    @MethodSource({
+             "invalidRequiredNumericResults",
+             "invalidStructuredResults",
+             "invalidHealthProbabilityCombinations"
+    })
+    @DisplayName("유효하지 않은 Result 계약을 가진 응답은 거부한다")
+    void rejectInvalidResults(
             String description,
             Result invalidResult
     ) {
-        // Given: 일부 확률이 누락되거나 값이 유효하지 않은 Result가 주어진다.
-
-        // When: 해당 Result를 분석 결과로 처리한다.
-
-        // Then: 저장하지 않고 응답 계약 오류로 처리한다.
-        assertThat(description)
-                .isNotBlank();
-
+        assertThat(description).isNotBlank();
         assertInvalidResult(invalidResult);
     }
 
