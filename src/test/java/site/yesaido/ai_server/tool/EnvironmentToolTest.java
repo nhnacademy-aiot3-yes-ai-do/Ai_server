@@ -41,9 +41,9 @@ class EnvironmentToolTest {
         UserContextHolder.clear();
     }
 
-    private FeignException createFeignException(int status, String message) {
+    private FeignException createFeignException() {
         Request request = Request.create(Request.HttpMethod.GET, "/test", new HashMap<>(), Request.Body.empty(), new RequestTemplate());
-        return new FeignException.FeignClientException(status, message, request, null, null);
+        return new FeignException.FeignClientException(500, "Internal Error", request, null, null);
     }
 
     @Test
@@ -81,7 +81,7 @@ class EnvironmentToolTest {
     @DisplayName("getUserCultivations - FeignException 통신 장애 예외 처리")
     void getUserCultivations_feignException() {
         UserContextHolder.setUserId(22L);
-        when(cultivationClient.getCultivations(22L)).thenThrow(createFeignException(500, "Internal Error"));
+        when(cultivationClient.getCultivations(22L)).thenThrow(createFeignException());
 
         String result = environmentTool.getUserCultivations();
         assertThat(result).contains("재배지 서버와의 통신이 원활하지 않아");

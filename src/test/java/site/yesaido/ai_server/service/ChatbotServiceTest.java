@@ -156,8 +156,8 @@ class ChatbotServiceTest {
         List<ChatMessageDto> result = chatbotService.getConversationHistory(22L, 1L, null);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).content()).isEqualTo("안녕");
-        assertThat(result.get(0).role()).isEqualTo(MessageRole.USER);
+        assertThat(result.getFirst().content()).isEqualTo("안녕");
+        assertThat(result.getFirst().role()).isEqualTo(MessageRole.USER);
     }
 
     @Test
@@ -173,7 +173,7 @@ class ChatbotServiceTest {
         List<ChatMessageDto> result = chatbotService.getConversationHistory(22L, null, 7L);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).content()).isEqualTo("질문");
+        assertThat(result.getFirst().content()).isEqualTo("질문");
     }
 
     @Test

@@ -1225,7 +1225,7 @@ class VisionRelayServiceTest {
         return Stream.of(
                 Arguments.of(
                         "사진 DTO가 null",
-                        (DailyCultivationPhotoResponse) null
+                        null
                 ),
                 Arguments.of(
                         "cultivationId가 null",
@@ -1263,7 +1263,7 @@ class VisionRelayServiceTest {
         return Stream.of(
                 Arguments.of(
                         "응답 자체가 null",
-                        (VisionResponse) null
+                        null
                 ),
                 Arguments.of(
                         "analysisType이 null",
