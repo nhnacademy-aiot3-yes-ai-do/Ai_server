@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryListResponse;
 import site.yesaido.ai_server.dto.client.cultivation.HarvestDetailResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
 import site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse;
@@ -15,7 +16,6 @@ import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 import site.yesaido.ai_server.dto.cultivation.*;
 
 import java.time.LocalDate;
-import java.util.List;
 
 @FeignClient(
         name = "cultivation-server",
@@ -26,8 +26,8 @@ public interface CultivationClient {
     CultivationDetailResponse getCultivation(@RequestHeader("X-User-Id") Long userId,
                                              @PathVariable("cultivation-id") Long cultivationId);
 
-    @GetMapping("/cultivations/users/{user-id}/ids") // 인사이트 조회할 때 내 재배 안뜨게 하게 위해 추가
-    List<Long> getUserCultivationIds(@PathVariable("user-id") Long userId);
+    @GetMapping("/cultivations") // 인사이트 조회할 때 내 재배 안뜨게 하게 위해 추가
+    CultivationSummaryListResponse getCultivations(@RequestHeader("X-User-Id") Long userId);
 
     @GetMapping("/cultivations/{cultivation-id}/harvest") // 수확 정보 조회
     HarvestDetailResponse getHarvest(@PathVariable("cultivation-id") Long cultivationId,
@@ -60,6 +60,6 @@ public interface CultivationClient {
     );
 
     // cultivation DB의 전체 버섯 기준 정보 및 등록된 센서 임계값 조회
-    @GetMapping("/api/v1/mushroom-references")
+    @GetMapping("/mushroom-references")
     MushroomReferenceInfoListResponse getMushroomReference();
 }

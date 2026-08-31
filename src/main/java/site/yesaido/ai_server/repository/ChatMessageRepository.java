@@ -18,8 +18,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     List<ChatMessage> findAllMessages(@Param("conversationId") Long conversationId);
 
     // AI에게 보낼 최근 10개 대화 조회(대화 맥락 유지하면서 api 호출 토큰 절감)
-    @Query("SELECT m FROM ChatMessage m WHERE m.chatConversationId = :conversationId ORDER BY m.sequenceNumber DESC LIMIT 10")
-    List<ChatMessage> findRecent10Messages(@Param("conversationId") Long conversationId);
+    List<ChatMessage> findTop10ByChatConversationIdOrderBySequenceNumberDesc(Long chatConversationId);
 
     // 새 메시지 추가 시 메시지 순서 뒤틀리지 않게 마지막 번호 조회
     @Query("SELECT COALESCE(MAX(m.sequenceNumber), 0) FROM ChatMessage m WHERE m.chatConversationId = :conversationId")

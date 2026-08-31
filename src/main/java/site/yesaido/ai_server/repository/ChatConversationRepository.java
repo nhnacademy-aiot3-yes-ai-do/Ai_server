@@ -12,7 +12,7 @@ import java.util.Optional;
 public interface ChatConversationRepository extends JpaRepository<ChatConversation, Long> {
     // 사용자 ID로 1:1 전담 대화방 조회
     // 웹, 디스코드, 텔레그램 어디서 접속하든 이전 대화 맥락 이어갈 수 있게 하기 위해 사용
-    Optional<ChatConversation> findByUserId(Long userId);
+    Optional<ChatConversation> findByIdAndUserId(Long id, Long userId);
 
     //  사용자 ID와 접속 채널(1:웹, 2:디스코드, 3:텔레그램)로 특정 채널 대화방 조회
     // 채널 간 대화방 독립적으로 분리하는데 사용

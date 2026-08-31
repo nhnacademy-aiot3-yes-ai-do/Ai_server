@@ -6,7 +6,9 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.context.UserContextHolder;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryListResponse;
 import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 
@@ -21,23 +23,26 @@ public class EnvironmentTool {
     private final CultivationClient cultivationClient;
     // 전체 재배지 목록 조회
     @Tool(description = "사용자가 현재 관리/운영 중인 전체 재배지 목록(재배지 ID, 버섯 종류, 재배 상태/모드 등)을 조회합니다.")
-    public String getUserCultivations(
-            @ToolParam(description = "사용자 고유 ID (숫자)") Long userId) {
+    public String getUserCultivations() {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            log.error("UserContextHolder에 userId가 설정되어 있지 않습니다.");
+            return "인증된 사용자 정보를 찾을 수 없습니다.";
+        }
 
         log.info("사용자 ID {}의 재배지 목록 조회 시작", userId);
         try {
-            List<Long> cultIds = cultivationClient.getUserCultivationIds(userId);
-            if (cultIds == null || cultIds.isEmpty()) {
+            CultivationSummaryListResponse response = cultivationClient.getCultivations(userId);
+            if (response == null || response.cultivationSummaryResponses() == null || response.cultivationSummaryResponses().isEmpty())
+            {
                 return "현재 등록되어 운영 중인 재배지가 없습니다.";
             }
 
             StringBuilder sb = new StringBuilder("[현재 운영 중인 재배지 목록]\n");
-            for (Long id : cultIds) {
-                CultivationDetailResponse detail = cultivationClient.getCultivation(userId, id);
-                if (detail != null) {
-                    sb.append(String.format("- [재배지 ID: %d] 버섯 ID: %d | 상태: %s | 모드: %s%n",
-                            detail.cultivationId(), detail.mushroomId(), detail.status(), detail.mode()));
-                }
+            for (site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryResponse summary : response.
+                    cultivationSummaryResponses()) {
+                sb.append(String.format("- [재배지 ID: %d] %s (버섯 ID: %d) | 상태: %s | 모드: %s%n",
+                        summary.cultivationId(), summary.name(), summary.mushroomId(), summary.status(), summary.mode()));
             }
             return sb.toString();
 
@@ -52,9 +57,13 @@ public class EnvironmentTool {
 
     // 특정 재배지의 실시간 센서 평균값 및 환경 적정 유지율 조회
     @Tool(description = "특정 재배지의 실시간 센서 평균값(온도, 습도, CO2, 조도)과 적정 환경 유지율(%)을 조회하여 농장 환경 상태를 점검합니다.")
-    public String getCultivationEnvironmentStatus(
-            @ToolParam(description = "사용자 고유 ID (숫자)") Long userId,
-            @ToolParam(description = "조회할 재배지 ID (숫자)") Long cultivationId) {
+    // LLM은 cultivationId만 넘기고 userId는 서버 컨텍스트에서 직접 꺼내는 방식으로 하여 보안 강화
+    public String getCultivationEnvironmentStatus(@ToolParam(description = "조회할 재배지 ID (숫자)") Long cultivationId) {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            log.error("UserContextHolder에 userId가 설정되어 있지 않습니다.");
+            return "인증된 사용자 정보를 찾을 수 없습니다.";
+        }
         log.info("재배지 ID {} 실시간 센서 및 환경 유지율 조회 시작 (사용자 ID: {})", cultivationId, userId);
         try {
             CultivationDetailResponse cult = cultivationClient.getCultivation(userId, cultivationId);
