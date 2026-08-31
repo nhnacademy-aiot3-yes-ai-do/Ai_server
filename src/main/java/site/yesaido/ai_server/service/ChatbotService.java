@@ -50,6 +50,7 @@ public class ChatbotService {
     private Resource chatSystemPromptResource;
 
     // 사용자 질문 처리, AI 답변 생성
+    @Transactional
     public ChatMessageResponse chat(Long userId, ChatMessageRequest request) {
         log.info("챗봇 대화 요청 수신 - userId: {}, conversationId: {}, cultivationId: {}, channelId: {}",
                 userId, request.conversationId(), request.cultivationId(), request.channelId());
@@ -62,6 +63,8 @@ public class ChatbotService {
                     request.channelId(),
                     request.conversationId()
             );
+            //  이전 대화 이력 먼저 조회 (현재 질문 제외한 순수 과거 대화 복원)
+            List<Message> historyMessages = buildRecentConversationHistory(conversation.getId());
 
             // 사용자 질문 DB 저장
             Long userSeq = messageRepository.findMaxSequenceNumber(conversation.getId()) + 1;
@@ -72,9 +75,6 @@ public class ChatbotService {
                     .sequenceNumber(userSeq)
                     .build();
             messageRepository.save(userMessageEntity);
-
-            // 최근 10개 대화 복원하여 문맥 유지
-            List<Message> historyMessages = buildRecentConversationHistory(conversation.getId());
 
             PromptTemplate promptTemplate = new PromptTemplate(chatSystemPromptResource);
             Map<String, Object> contextMap = new HashMap<>();
@@ -90,17 +90,7 @@ public class ChatbotService {
             Prompt prompt = new Prompt(fullMessages);
 
             Optional<String> replyOpt = callAi(prompt);
-            if (replyOpt.isEmpty()) {
-                return new ChatMessageResponse(
-                        conversation.getId(),
-                        "죄송합니다. 현재 일시적인 AI 서비스 점검 중이라 답변을 생성하지 못했습니다. 잠시 후 다시 질문해 주세요.",
-                        MessageRole.ASSISTANT,
-                        userSeq + 1,
-                        LocalDateTime.now(ZoneId.of("Asia/Seoul"))
-                );
-            }
-
-            String replyText = replyOpt.get();
+            String replyText = replyOpt.orElse("죄송합니다. 현재 일시적인 AI 서비스 점검 중이라 답변을 생성하지 못했습니다. 잠시 후 다시 질문해 주세요.");
 
             // AI 답변 DB 저장
             Long aiSeq = messageRepository.findMaxSequenceNumber(conversation.getId()) + 1;
