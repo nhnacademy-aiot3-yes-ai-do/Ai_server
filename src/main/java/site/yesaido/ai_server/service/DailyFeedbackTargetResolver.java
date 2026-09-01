@@ -117,4 +117,70 @@ public class DailyFeedbackTargetResolver {
 
         return List.copyOf(channels);
     }
+
+    /**
+     * Snapshot에서 특정 경작지의 현재 임계값만 추출합니다.
+     *
+     * <p>반환값은 과거 {@code feedbackDate}에 적용됐던 임계값 이력이 아니라
+     * {@link DataGeneratorSnapshotResponse#snapshotAt()} 시점의 현재
+     * 설정입니다.</p>
+     *
+     * <p>Context 조립 계층이 전체 Snapshot을 직접 순회하지 않도록
+     * Snapshot 해석 책임을 이 Resolver에 모읍니다. 빈 목록은 오류가 아니라
+     * 해당 경작지에 현재 설정된 임계값이 없다는 정상 상태입니다.</p>
+     *
+     * @param snapshot 실행 시점의 Data Generator Snapshot
+     * @param cultivationId 현재 임계값을 찾을 경작지 ID
+     * @return 센서 타입과 단위 순서로 정렬된 수정 불가능한 현재 임계값 목록
+     * @throws IllegalArgumentException snapshot이 null이거나 cultivationId가 유효하지 않은 경우
+     * @throws IllegalStateException Snapshot에 null 임계값이 있거나 반환 대상의 채널 조합이 중복된 경우
+     */
+    public List<DataGeneratorThresholdResponse> resolveCurrentThresholds(
+            DataGeneratorSnapshotResponse snapshot,
+            Long cultivationId
+    ) {
+        if (snapshot == null) {
+            throw new IllegalArgumentException("snapshot은 null일 수 없습니다.");
+        }
+
+        if (cultivationId == null || cultivationId <= 0) {
+            throw new IllegalArgumentException("cultivationId는 null이 아니며 0보다 커야 합니다.");
+        }
+
+        List<DataGeneratorThresholdResponse> thresholds = new ArrayList<>();
+        Set<CurrentThresholdKey> uniqueThresholds = new HashSet<>();
+
+        for (DataGeneratorThresholdResponse threshold : snapshot.thresholds()) {
+            if (threshold == null) {
+                throw new IllegalStateException("Snapshot의 thresholds에 null 요소가 포함되어 있습니다.");
+            }
+
+            if (!cultivationId.equals(threshold.cultivationId())) {
+                continue;
+            }
+
+            CurrentThresholdKey thresholdKey = new CurrentThresholdKey(threshold.sensorType(), threshold.unit());
+
+            if (!uniqueThresholds.add(thresholdKey)) {
+                throw new IllegalStateException("Snapshot에 동일한 현재 임계값 채널이 중복되었습니다: cultivationId=%s, sensorType=%s, unit=%s"
+                        .formatted(cultivationId, threshold.sensorType(), threshold.unit()));
+            }
+
+            thresholds.add(threshold);
+        }
+
+        thresholds.sort(
+                Comparator
+                        .comparing(DataGeneratorThresholdResponse::sensorType)
+                        .thenComparing(DataGeneratorThresholdResponse::unit)
+        );
+
+        return List.copyOf(thresholds);
+    }
+
+    private record CurrentThresholdKey(
+            String sensorType,
+            String unit
+    ){
+    }
 }
