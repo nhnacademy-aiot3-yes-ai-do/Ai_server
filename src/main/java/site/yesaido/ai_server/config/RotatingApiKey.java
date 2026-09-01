@@ -80,7 +80,7 @@ public class RotatingApiKey implements ChatModel{
             } catch (RuntimeException e) {
                 // 429 할당량 초과인지 확인
                 if (isQuotaExceededException(e)) {
-                    markKeyAsExhausted(keyIndex);
+                    markKeyAsExhausted(keyIndex, e);
                     attempts++;
                     log.warn("[API Key #{}] 429 일일 할당량 초과 감지! 다음 구글 쿼터 리셋(PT 자정)까지 쿨다운 처리하고 다음 키로 재시도합니다. (시도 {}/{})", keyIndex + 1, attempts, maxAttempts);
                 } else {
@@ -120,7 +120,7 @@ public class RotatingApiKey implements ChatModel{
                 .doOnComplete(() -> incrementSuccess(keyIndex))
                 .onErrorResume(e -> {
                     if (isQuotaExceededException(e)) {
-                        markKeyAsExhausted(keyIndex);
+                        markKeyAsExhausted(keyIndex, e);
                         log.warn("[stream API Key #{}] 429 감지 -> 다음 키로 스트림 전환 재시도 (시도 {}/{})",
                                 keyIndex + 1, attempts + 1, maxAttempts);
                         return streamWithRetry(prompt, attempts + 1, maxAttempts);
@@ -133,7 +133,7 @@ public class RotatingApiKey implements ChatModel{
     private int pickNextHealthyKeyIndex() {
         cleanupExpiredCooldowns();
         int totalKeys = models.size();
-        int start = Math.abs(requestCounter.getAndIncrement());
+        int start = Math.floorMod(requestCounter.getAndIncrement(), totalKeys);
 
         // 쿨다운에 걸리지 않은 정상 키 탐색
         for (int i = 0; i < totalKeys; i++) {
@@ -150,8 +150,23 @@ public class RotatingApiKey implements ChatModel{
         throw new GeminiAllKeysExhaustedException(totalKeys, earliest);
     }
 
-    private void markKeyAsExhausted(int keyIndex) {
-        exhaustedUntil.put(keyIndex, calculateNextDailyResetTime());
+    private void markKeyAsExhausted(int keyIndex, Throwable throwable) {
+        if (isDailyLimitExceeded(throwable)) {
+            exhaustedUntil.put(keyIndex, calculateNextDailyResetTime());
+            log.warn("[API Key #{}] 일일 쿼터 소진 -> PT 자정까지 쿨다운", keyIndex + 1);
+            }
+        else {
+            exhaustedUntil.put(keyIndex, Instant.now().plusSeconds(60));
+            log.warn("[API Key #{}] 일시적 속도 제한(RPM) 감지 -> 1분간 일시 쿨다운", keyIndex + 1);
+        }
+    }
+    private boolean isDailyLimitExceeded(Throwable throwable) {
+        String msg = throwable.getMessage();
+        if (msg == null) {
+            return false;
+        }
+        String lowerMsg = msg.toLowerCase();
+        return lowerMsg.contains("perday") || lowerMsg.contains("per day") || lowerMsg.contains("daily") || lowerMsg.contains("limit: 20");
     }
 
     // api key 리셋 시간 계산

@@ -217,4 +217,22 @@ class SensorValidationServiceTest {
         assertThat(response.recommendedMax()).isEqualByComparingTo(BigDecimal.valueOf(18));
         assertThat(response.message()).contains("적절한 임계값입니다");
     }
+
+    @Test
+    @DisplayName("Gemini 모든 키 소진 시 GeminiAllKeysExhaustedException이 그대로 전파되는지 검증")
+    void validate_GeminiAllKeysExhausted() {
+        given(hashOps.get(anyString(), anyString())).willReturn(null);
+
+        // Gemini 호출 시 키 소진 예외가 터지도록 모킹
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willThrow(new site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException(9, java.time.Instant.now()));
+
+        SensorValidationRequest request = new SensorValidationRequest(
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
+        );
+
+        // AiAnalysisFailedException으로 덮어씌워지지 않고 GeminiAllKeysExhaustedException이 그대로 전파되는지 검증
+        org.junit.jupiter.api.Assertions.assertThrows(site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException.class,
+                () -> sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request));
+    }
 }

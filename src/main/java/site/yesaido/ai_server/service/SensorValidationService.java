@@ -19,6 +19,7 @@ import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
 import site.yesaido.ai_server.exception.AiAnalysisFailedException;
+import site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 
@@ -161,6 +162,9 @@ public class SensorValidationService {
                     .user(userMessage)
                     .call()
                     .entity(AiSensorResultDto.class);
+        } catch (GeminiAllKeysExhaustedException e) {
+            log.error("[AI 임계값 분석] 모든 Gemini API Key가 소진되었습니다: {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
             log.error("[AI 임계값 분석] Gemini 호출 실패. 원인: {}", e.getMessage(), e);
             throw new AiAnalysisFailedException(0L);
