@@ -11,8 +11,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
-import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
@@ -37,6 +37,9 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class InsightServiceTest {
+    @Mock
+    private PromptProperties promptProperties;
+
     @Mock
     private InsightRepository insightRepository;
 
@@ -63,8 +66,8 @@ class InsightServiceTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(insightService, "systemPrompt", systemPrompt);
-        ReflectionTestUtils.setField(insightService, "userPrompt", userPrompt);
+        lenient().when(promptProperties.getInsightSummarySystemPrompt()).thenReturn(systemPrompt);
+        lenient().when(promptProperties.getInsightSummaryUserPrompt()).thenReturn(userPrompt);
 
         mockCultivation = new CultivationDetailResponse(
                 1L, 2L, "FINISHED", "HARVEST", LocalDateTime.now()

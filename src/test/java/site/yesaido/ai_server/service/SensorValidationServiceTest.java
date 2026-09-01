@@ -12,10 +12,11 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import static org.mockito.Mockito.lenient;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.times;
@@ -41,8 +42,9 @@ class SensorValidationServiceTest {
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private ChatClient geminiChatClient;
 
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-    private ChatClient ollamaChatClient;
+    @Mock
+    private PromptProperties promptProperties;
+
     @Mock private CultivationClient cultivationClient;
     @Mock private ObjectMapper objectMapper;
     @Mock private StringRedisTemplate redisTemplate;
@@ -58,13 +60,16 @@ class SensorValidationServiceTest {
     private static final String REDIS_KEY = "mushroom:sensor:validation:1";
 
     @BeforeEach
-    void setup(){ // @Value에 값 테스트에서 안 넣어버리는 문제 해결 위해 가짜 파일 채워줌
+    void setup() {
         sensorValidationService = new SensorValidationService(
-                geminiChatClient, ollamaChatClient, cultivationClient,
-                objectMapper, redisTemplate, mushCsvReader);
+                geminiChatClient, cultivationClient,
+                objectMapper, redisTemplate, mushCsvReader, promptProperties);
 
-        ReflectionTestUtils.setField(sensorValidationService, "systemResource", new ByteArrayResource("system prompt".getBytes()));
-        ReflectionTestUtils.setField(sensorValidationService, "userResource", new ByteArrayResource("user prompt".getBytes()));
+        // ✅ lenient()를 붙여서 AI를 호출하지 않는 캐시 테스트에서도 에러가 안 나도록 설정!
+        lenient().when(promptProperties.getSensorValidationSystemPrompt())
+                .thenReturn(new ByteArrayResource("system prompt".getBytes()));
+        lenient().when(promptProperties.getSensorValidationUserPrompt())
+                .thenReturn(new ByteArrayResource("user prompt".getBytes()));
 
         given(cultivationClient.getCultivation(USER_ID, CULTIVATION_ID))
                 .willReturn(new CultivationDetailResponse(CULTIVATION_ID, MUSHROOM_ID, "ACTIVE", "AUTO", LocalDateTime.now()));
@@ -72,7 +77,6 @@ class SensorValidationServiceTest {
         given(mushCsvReader.readMushroomCsv())
                 .willReturn(List.of(new MushroomCsvDto(MUSHROOM_ID, "느타리버섯", "title", "content")));
 
-        // 공통 모킹 2: Redis 해시 오퍼레이션 강제 타입 주입 (컴파일 에러 방지)
         given(redisTemplate.<String, String>opsForHash()).willReturn(hashOps);
     }
 

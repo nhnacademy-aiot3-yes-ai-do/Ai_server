@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.context.UserContextHolder;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageDto;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageRequest;
@@ -31,9 +32,10 @@ import java.util.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
-@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
+@RequiredArgsConstructor(onConstructor_ = {@Autowired})
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true) // @Transactional CGLIB 프록시용 생성자
 public class ChatbotService {
+    private final PromptProperties promptProperties;
     private final ChatClient geminiChatClient; // Gemini 2.5 Flash Lite
 
     private final ChatConversationRepository conversationRepository;
@@ -43,8 +45,6 @@ public class ChatbotService {
     private final EnvironmentTool environmentTool;
     private final PastHarvestInsightTool pastHarvestInsightTool;
 
-    @Value("classpath:prompts/chat_system.st")
-    private Resource chatSystemPromptResource;
 
     // 사용자 질문 처리, AI 답변 생성
     @Transactional
@@ -73,7 +73,7 @@ public class ChatbotService {
                     .build();
             messageRepository.save(userMessageEntity);
 
-            PromptTemplate promptTemplate = new PromptTemplate(chatSystemPromptResource);
+            PromptTemplate promptTemplate = new PromptTemplate(promptProperties.getChatSystemPrompt());
             Map<String, Object> contextMap = new HashMap<>();
             contextMap.put("cultivationId", request.cultivationId() != null ? request.cultivationId() : "선택 안 됨 (일반 질문 모드)");
             Message systemMessage = promptTemplate.createMessage(contextMap);
@@ -175,7 +175,7 @@ public class ChatbotService {
         return messages;
     }
 
-    // Gemini 2.5 Flash Lite 호출 (3대 Tools 포함) -> 장애 시 로컬 Ollama 자동 사용
+    // Gemini 3.5 Flash Lite 호출 (3대 Tools 포함)
     private Optional<String> callAi(Prompt prompt) {
         try {
             log.info("Gemini 2.5 Flash Lite 호출 시작 (3대 도구 연동)");

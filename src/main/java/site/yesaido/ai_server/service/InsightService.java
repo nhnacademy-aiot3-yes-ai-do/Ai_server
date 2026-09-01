@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
@@ -34,19 +35,14 @@ import java.util.stream.Stream;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
-@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
+@RequiredArgsConstructor(onConstructor_ = {@Autowired})
+@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true) // @Transactional CGLIB 프록시용 생성자
 public class InsightService {
     private final InsightRepository insightRepository;
     private final CultivationClient cultivationClient;
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader; // mushroomId로 버섯 이름 가져오기 위해 추가
-
-    @Value("classpath:prompts/insight_summary_system.st")
-    private Resource systemPrompt;
-
-    @Value("classpath:prompts/insight_summary_user.st")
-    private Resource userPrompt;
+    private final PromptProperties promptProperties;
 
     // 수확 완료 시 Insight 적재(아직 환경 유지율 점수, 전체 평균 센서 값 못가져와서 임시로 작성)
     public InsightCandidateResponse saveHarvestInsight(Long cultivationId, Long userId) {
@@ -161,8 +157,8 @@ public class InsightService {
         try{
             ChatClient client = Objects.requireNonNull(chatClient);
             return client.prompt()
-                    .system(systemPrompt)
-                    .user(u -> u.text(userPrompt)
+                    .system(promptProperties.getInsightSummarySystemPrompt())
+                    .user(u -> u.text(promptProperties.getInsightSummaryUserPrompt())
                             .param("mushroomName", mushroomName)
                             .param("sensorDataText", sensorDataText)
                             .param("harvestWeight", weight)

@@ -10,18 +10,18 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.Resource;
-import org.springframework.test.util.ReflectionTestUtils;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.*;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 import static org.assertj.core.api.Assertions.*;
 import java.util.List;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+
 import java.util.function.Consumer;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class MushServiceTest {
@@ -34,6 +34,9 @@ class MushServiceTest {
     @Mock
     private site.yesaido.ai_server.client.CultivationClient cultivationClient;
 
+    @Mock
+    private PromptProperties promptProperties;
+
     @InjectMocks
     private MushService mushService;
 
@@ -45,8 +48,8 @@ class MushServiceTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(mushService, "systemPrompt", systemPrompt);
-        ReflectionTestUtils.setField(mushService, "userPrompt", userPrompt);
+        lenient().when(promptProperties.getMushGuideSystemPrompt()).thenReturn(systemPrompt);
+        lenient().when(promptProperties.getMushGuideUserPrompt()).thenReturn(userPrompt);
     }
 
     @Test

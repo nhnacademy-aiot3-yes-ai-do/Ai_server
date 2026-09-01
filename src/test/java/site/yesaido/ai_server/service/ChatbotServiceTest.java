@@ -13,6 +13,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.test.util.ReflectionTestUtils;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.context.UserContextHolder;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageDto;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageRequest;
@@ -38,6 +39,9 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ChatbotServiceTest {
     @Mock
+    private PromptProperties promptProperties;
+
+    @Mock
     private ChatClient geminiChatClient;
 
     @Mock
@@ -61,7 +65,7 @@ class ChatbotServiceTest {
     @BeforeEach
     void setUp() {
         Resource mockSystemPrompt = new ByteArrayResource("System Prompt Template {cultivationId}".getBytes(StandardCharsets.UTF_8));
-        ReflectionTestUtils.setField(chatbotService, "chatSystemPromptResource", mockSystemPrompt);
+        lenient().when(promptProperties.getChatSystemPrompt()).thenReturn(mockSystemPrompt);
     }
 
     @AfterEach
