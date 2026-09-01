@@ -16,6 +16,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import site.yesaido.ai_server.dto.client.cultivation.DailyCultivationDetailResponse;
@@ -92,6 +93,10 @@ class DailyFeedbackGenerationServiceTest {
     private static final String OLLAMA_EXCEPTION_DETAIL =
             "TEST_OLLAMA_PROVIDER_PRIVATE_MESSAGE";
 
+    private static final String OLLAMA_PROVIDER_EXCEPTION_DETAIL =
+            "TEST_OLLAMA_PROVIDER_LOOKUP_PRIVATE_MESSAGE_"
+                    + DEVICE_EUI;
+
     private static final String PREPARATION_EXCEPTION_DETAIL =
             "TEST_PREPARATION_PRIVATE_MESSAGE_" + DEVICE_EUI;
 
@@ -109,6 +114,10 @@ class DailyFeedbackGenerationServiceTest {
 
     @Mock
     private ChatClient ollamaChatClient;
+
+    @Mock
+    private ObjectProvider<ChatClient>
+            ollamaChatClientProvider;
 
     private ObjectMapper objectMapper;
     private DailyFeedbackPromptContextSanitizer contextSanitizer;
@@ -163,6 +172,7 @@ class DailyFeedbackGenerationServiceTest {
 
         verifyNoInteractions(
                 geminiChatClient,
+                ollamaChatClientProvider,
                 ollamaChatClient
         );
     }
@@ -192,7 +202,11 @@ class DailyFeedbackGenerationServiceTest {
 
         verify(geminiChatClient, times(1)).prompt();
         verify(geminiCall.responseSpec(), times(1)).content();
-        verifyNoInteractions(ollamaChatClient);
+
+        verifyNoInteractions(
+                ollamaChatClientProvider,
+                ollamaChatClient
+        );
 
         CapturedMessages messages =
                 captureMessages(geminiCall);
@@ -375,6 +389,8 @@ class DailyFeedbackGenerationServiceTest {
         // 준비
         DailyFeedbackContext context = validContext();
 
+        stubAvailableOllamaChatClient();
+
         ModelCallMock geminiCall = stubModelOutcome(
                 geminiChatClient,
                 geminiFailure
@@ -405,6 +421,12 @@ class DailyFeedbackGenerationServiceTest {
         }
 
         verify(geminiChatClient, times(1)).prompt();
+
+        verify(
+                ollamaChatClientProvider,
+                times(1)
+        ).getIfAvailable();
+
         verify(ollamaChatClient, times(1)).prompt();
         verify(geminiCall.responseSpec(), times(1)).content();
         verify(ollamaCall.responseSpec(), times(1)).content();
@@ -440,6 +462,8 @@ class DailyFeedbackGenerationServiceTest {
 
         String rawContextJson =
                 objectMapper.writeValueAsString(context);
+
+        stubAvailableOllamaChatClient();
 
         stubModelFailure(
                 geminiChatClient,
@@ -492,7 +516,122 @@ class DailyFeedbackGenerationServiceTest {
         }
 
         verify(geminiChatClient, times(1)).prompt();
+
+        verify(
+                ollamaChatClientProvider,
+                times(1)
+        ).getIfAvailable();
+
         verify(ollamaChatClient, times(1)).prompt();
+    }
+
+    @Test
+    @DisplayName("Gemini가 실패하고 Ollama Provider가 null이면 안전한 최종 예외를 반환한다")
+    void throwsSafeFinalExceptionWhenOllamaProviderReturnsNull()
+            throws JsonProcessingException {
+        // 준비
+        DailyFeedbackContext context = validContext();
+
+        String rawContextJson =
+                objectMapper.writeValueAsString(context);
+
+        ModelCallMock geminiCall = stubModelFailure(
+                geminiChatClient,
+                new IllegalStateException(
+                        GEMINI_EXCEPTION_DETAIL
+                )
+        );
+
+        when(ollamaChatClientProvider.getIfAvailable())
+                .thenReturn(null);
+
+        // 실행
+        AiAnalysisFailedException exception =
+                catchThrowableOfType(
+                        AiAnalysisFailedException.class,
+                        () -> service.generate(context)
+                );
+
+        // 검증
+        assertThat(exception)
+                .isNotNull()
+                .isInstanceOf(AiAnalysisFailedException.class);
+
+        assertThat(exception.getMessage())
+                .isEqualTo(FINAL_FAILURE_MESSAGE)
+                .doesNotContain(
+                        GEMINI_EXCEPTION_DETAIL,
+                        rawContextJson,
+                        DEVICE_EUI,
+                        CULTIVATION_NAME
+                );
+
+        verify(geminiChatClient, times(1)).prompt();
+        verify(geminiCall.responseSpec(), times(1)).content();
+
+        verify(
+                ollamaChatClientProvider,
+                times(1)
+        ).getIfAvailable();
+
+        verifyNoInteractions(ollamaChatClient);
+    }
+
+    @Test
+    @DisplayName("Gemini가 실패하고 Ollama Provider 조회도 실패하면 안전한 최종 예외를 반환한다")
+    void throwsSafeFinalExceptionWhenOllamaProviderLookupFails()
+            throws JsonProcessingException {
+        // 준비
+        DailyFeedbackContext context = validContext();
+
+        String rawContextJson =
+                objectMapper.writeValueAsString(context);
+
+        ModelCallMock geminiCall = stubModelFailure(
+                geminiChatClient,
+                new IllegalStateException(
+                        GEMINI_EXCEPTION_DETAIL
+                )
+        );
+
+        when(ollamaChatClientProvider.getIfAvailable())
+                .thenThrow(
+                        new IllegalStateException(
+                                OLLAMA_PROVIDER_EXCEPTION_DETAIL
+                        )
+                );
+
+        // 실행
+        AiAnalysisFailedException exception =
+                catchThrowableOfType(
+                        AiAnalysisFailedException.class,
+                        () -> service.generate(context)
+                );
+
+        // 검증
+        assertThat(exception)
+                .isNotNull()
+                .isInstanceOf(AiAnalysisFailedException.class);
+
+        assertThat(exception.getMessage())
+                .isEqualTo(FINAL_FAILURE_MESSAGE)
+                .doesNotContain(
+                        OLLAMA_PROVIDER_EXCEPTION_DETAIL,
+                        GEMINI_EXCEPTION_DETAIL,
+                        rawContextJson,
+                        DEVICE_EUI,
+                        CULTIVATION_NAME
+                );
+
+        verify(geminiChatClient, times(1)).prompt();
+        verify(geminiCall.responseSpec(), times(1)).content();
+
+        verify(
+                ollamaChatClientProvider,
+                times(1)
+        ).getIfAvailable();
+
+        verifyNoInteractions(ollamaChatClient);
     }
 
     @Test
@@ -531,6 +670,7 @@ class DailyFeedbackGenerationServiceTest {
 
         verifyNoInteractions(
                 geminiChatClient,
+                ollamaChatClientProvider,
                 ollamaChatClient
         );
     }
@@ -585,6 +725,7 @@ class DailyFeedbackGenerationServiceTest {
 
         verifyNoInteractions(
                 geminiChatClient,
+                ollamaChatClientProvider,
                 ollamaChatClient
         );
     }
@@ -594,13 +735,18 @@ class DailyFeedbackGenerationServiceTest {
     ) {
         return new DailyFeedbackGenerationService(
                 geminiChatClient,
-                ollamaChatClient,
+                ollamaChatClientProvider,
                 mapper,
                 contextSanitizer,
                 outputValidator,
                 systemPromptResource,
                 userPromptResource
         );
+    }
+
+    private void stubAvailableOllamaChatClient() {
+        when(ollamaChatClientProvider.getIfAvailable())
+                .thenReturn(ollamaChatClient);
     }
 
     private ModelCallMock stubModelOutcome(
@@ -858,40 +1004,40 @@ class DailyFeedbackGenerationServiceTest {
 
     private static String validFeedback() {
         return """
-                  ## 오늘의 환경 요약
-                  테스트 재배지는 느타리버섯을 재배 중이며 입력된 환경 지표를 확인했습니다.
+                    ## 오늘의 환경 요약
+                    테스트 재배지는 느타리버섯을 재배 중이며 입력된 환경 지표를 확인했습니다.
 
-                  ## 센서별 통계
-                  - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
+                    ## 센서별 통계
+                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
 
-                  ## 이탈 및 제어
-                  임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
+                    ## 이탈 및 제어
+                    임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
 
-                  ## Vision 분석
-                  사진이 등록되지 않아 Vision 분석이 없습니다.
+                    ## Vision 분석
+                    사진이 등록되지 않아 Vision 분석이 없습니다.
 
-                  ## 내일의 관리 포인트
-                  - 센서와 제어 상태를 계속 확인해 주세요.
-                  """.strip();
+                    ## 내일의 관리 포인트
+                    - 센서와 제어 상태를 계속 확인해 주세요.
+                    """.strip();
     }
 
     private static String validFallbackFeedback() {
         return """
-                  ## 오늘의 환경 요약
-                  Ollama fallback 결과로 재배지의 환경 지표를 확인했습니다.
+                    ## 오늘의 환경 요약
+                    Ollama fallback 결과로 재배지의 환경 지표를 확인했습니다.
 
-                  ## 센서별 통계
-                  - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
+                    ## 센서별 통계
+                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
 
-                  ## 이탈 및 제어
-                  임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
+                    ## 이탈 및 제어
+                    임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
 
-                  ## Vision 분석
-                  사진이 등록되지 않아 Vision 분석이 없습니다.
+                    ## Vision 분석
+                    사진이 등록되지 않아 Vision 분석이 없습니다.
 
-                  ## 내일의 관리 포인트
-                  - 센서 채널과 제어 실패 여부를 다시 확인해 주세요.
-                  """.strip();
+                    ## 내일의 관리 포인트
+                    - 센서 채널과 제어 실패 여부를 다시 확인해 주세요.
+                    """.strip();
     }
 
     private static String withCrLfAndTrailingWhitespace(
@@ -910,21 +1056,21 @@ class DailyFeedbackGenerationServiceTest {
 
     private static String feedbackWithWrongHeadingOrder() {
         return """
-                  ## 오늘의 환경 요약
-                  테스트 재배지의 환경 지표를 확인했습니다.
+                    ## 오늘의 환경 요약
+                    테스트 재배지의 환경 지표를 확인했습니다.
 
-                  ## 이탈 및 제어
-                  임계값 이탈 알림과 제어 횟수를 확인했습니다.
+                    ## 이탈 및 제어
+                    임계값 이탈 알림과 제어 횟수를 확인했습니다.
 
-                  ## 센서별 통계
-                  EUI-TEST-001 채널 통계를 확인했습니다.
+                    ## 센서별 통계
+                    EUI-TEST-001 채널 통계를 확인했습니다.
 
-                  ## Vision 분석
-                  사진이 등록되지 않아 Vision 분석이 없습니다.
+                    ## Vision 분석
+                    사진이 등록되지 않아 Vision 분석이 없습니다.
 
-                  ## 내일의 관리 포인트
-                  - 센서 상태를 확인해 주세요.
-                  """.strip();
+                    ## 내일의 관리 포인트
+                    - 센서 상태를 확인해 주세요.
+                    """.strip();
     }
 
     private static String feedbackContainingLine(
