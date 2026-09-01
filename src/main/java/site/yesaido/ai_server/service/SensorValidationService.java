@@ -1,16 +1,15 @@
 package site.yesaido.ai_server.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
 import site.yesaido.ai_server.dto.ai.sensor_validation.AiSensorResultDto;
@@ -20,6 +19,7 @@ import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
 import site.yesaido.ai_server.exception.AiAnalysisFailedException;
+import site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
 
@@ -30,9 +30,9 @@ import java.util.Optional;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class SensorValidationService {
     private final ChatClient geminiChatClient;
-    private final ChatClient ollamaChatClient;
     private final CultivationClient cultivationClient;
     private final ObjectMapper objectMapper; // JAVA <-> JSON 변환기
     /**
@@ -42,26 +42,9 @@ public class SensorValidationService {
      */
     private final StringRedisTemplate redisTemplate;
     private final MushCsvReader mushCsvReader;
-    @Value("classpath:prompts/sensor_validation_system.st")
-    private Resource systemResource;
-    @Value("classpath:prompts/sensor_validation_user.st")
-    private Resource userResource;
+    private final PromptProperties promptProperties;
     private static final String REDIS_KEY =  "mushroom:sensor:validation:";
 
-    public SensorValidationService(
-            @Qualifier("geminiChatClient") ChatClient geminiChatClient,
-            @Qualifier("ollamaChatClient") ChatClient ollamaChatClient,
-            CultivationClient cultivationClient,
-            ObjectMapper objectMapper,
-            StringRedisTemplate redisTemplate,
-            MushCsvReader mushCsvReader) {
-        this.geminiChatClient = geminiChatClient;
-        this.ollamaChatClient = ollamaChatClient;
-        this.cultivationClient = cultivationClient;
-        this.objectMapper = objectMapper;
-        this.redisTemplate = redisTemplate;
-        this.mushCsvReader = mushCsvReader;
-    }
 
     public SensorValidationResponse validateSensorThreshold(Long userId, Long cultivationId, SensorValidationRequest request) {
         CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
@@ -165,7 +148,7 @@ public class SensorValidationService {
     private AiSensorResultDto callAiForRecommendations(String mushroomName, String combinedData, List<String> sensorList) {
         String sensorListString = String.join("\n", sensorList);
 
-        PromptTemplate userPromptTemplate = new PromptTemplate(userResource);
+        PromptTemplate userPromptTemplate = new PromptTemplate(promptProperties.getSensorValidationUserPrompt());
         String userMessage = userPromptTemplate.render(Map.of(
                 "mushroomName", mushroomName,
                 "combinedData", combinedData,
@@ -175,23 +158,16 @@ public class SensorValidationService {
         try { // gemini로 1차 시도 후 실패하면 올라마 사용해서라도 답변 나오게 수정
             log.info("[AI 임계값 분석] 1차 시도: Gemini API 호출 시작...");
             return geminiChatClient.prompt()
-                    .system(sys -> sys.text(systemResource))
+                    .system(sys -> sys.text(promptProperties.getSensorValidationSystemPrompt()))
                     .user(userMessage)
                     .call()
                     .entity(AiSensorResultDto.class);
+        } catch (GeminiAllKeysExhaustedException e) {
+            log.error("[AI 임계값 분석] 모든 Gemini API Key가 소진되었습니다: {}", e.getMessage());
+            throw e;
         } catch (Exception e) {
-            // 2차 시도: Gemini 장애 발생 시 사내 Ollama로 자동 전환
-            log.warn("[AI 임계값 분석] Gemini 호출 실패. Ollama(Qwen 3.5)로 전환합니다. 원인: {}", e.getMessage());
-            try {
-                return ollamaChatClient.prompt()
-                        .system(sys -> sys.text(systemResource))
-                        .user(userMessage)
-                        .call()
-                        .entity(AiSensorResultDto.class);
-            } catch (Exception fallbackEx) {
-                log.error("[AI 임계값 분석] Ollama Fallback마저 실패했습니다.", fallbackEx);
-                throw new AiAnalysisFailedException(0L);
-            }
+            log.error("[AI 임계값 분석] Gemini 호출 실패. 원인: {}", e.getMessage(), e);
+            throw new AiAnalysisFailedException(0L);
         }
     }
 

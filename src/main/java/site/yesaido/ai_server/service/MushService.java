@@ -1,43 +1,32 @@
 package site.yesaido.ai_server.service;
 
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.EnvironmentConditionInfo;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushGuideResponse;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.ai.mush_summary.SensorRange;
-
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
 import site.yesaido.ai_server.exception.MushDataNotFoundException;
 import site.yesaido.ai_server.reader.MushCsvReader;
-import site.yesaido.ai_server.client.CultivationClient;
-import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
-import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
 
 import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor(onConstructor_ = {@Autowired}) // 스프링에게 이 생성자로 의존성 주입하라고 명시
-@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true)
+@RequiredArgsConstructor
 public class MushService{
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader;
     private final CultivationClient cultivationClient;
-
-    @Value("classpath:prompts/mush_guide_system.st")
-    private Resource systemPrompt;
-
-    @Value("classpath:prompts/mush_guide_user.st")
-    private Resource userPrompt;
+    private final PromptProperties promptProperties;
 
     // Spring AI의 PromptTemplate 기능 사용하는 방식으로 변경 <- 프롬프트를 안전하고 동적으로 관리할 수 있음
     @Cacheable(value = "ai:mushroom", key = "#mushroomId + ':guide'")
@@ -72,8 +61,8 @@ public class MushService{
 
         // AI에게 임계값까지 추천 받던것 제거(이제는 요약, 난이도, 팁, 레시피만 받아옴)
         MushGuideResponse aiTextResponse = chatClient.prompt()
-                .system(systemPrompt)
-                .user(u -> u.text(userPrompt)
+                .system(promptProperties.getMushGuideSystemPrompt())
+                .user(u -> u.text(promptProperties.getMushGuideUserPrompt())
                         .param("mushroomId", mushroomId)
                         .param("mushroomName", finalMushroomName)
                         .param("combinedData", finalCombinedData))
