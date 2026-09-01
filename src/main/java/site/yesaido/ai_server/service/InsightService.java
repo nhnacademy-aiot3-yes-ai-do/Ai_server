@@ -1,13 +1,8 @@
 package site.yesaido.ai_server.service;
 
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,8 +30,7 @@ import java.util.stream.Stream;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor(onConstructor_ = {@Autowired})
-@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true) // @Transactional CGLIB 프록시용 생성자
+@RequiredArgsConstructor
 public class InsightService {
     private final InsightRepository insightRepository;
     private final CultivationClient cultivationClient;

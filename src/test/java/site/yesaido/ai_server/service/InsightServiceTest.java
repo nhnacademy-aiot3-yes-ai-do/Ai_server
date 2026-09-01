@@ -230,9 +230,7 @@ class InsightServiceTest {
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(wrongHarvest);
 
         // 예외가 잘 터지는지 콕 찔러서 확인
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            insightService.saveHarvestInsight(1L, 100L);
-        });
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> insightService.saveHarvestInsight(1L, 100L));
     }
 
     @Test
@@ -250,9 +248,7 @@ class InsightServiceTest {
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(negativeHarvest);
 
         // signum() < 0 분기에 걸려 예외가 터지는지 확인
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> {
-            insightService.saveHarvestInsight(1L, 100L);
-        });
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> insightService.saveHarvestInsight(1L, 100L));
     }
 
     @Test

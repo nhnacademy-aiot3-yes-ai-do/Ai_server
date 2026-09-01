@@ -64,6 +64,16 @@ class ChatbotServiceTest {
 
     @BeforeEach
     void setUp() {
+        chatbotService = new ChatbotService(
+                promptProperties,
+                geminiChatClient,
+                conversationRepository,
+                messageRepository,
+                mushroomKnowledgeTool,
+                environmentTool,
+                pastHarvestInsightTool
+        );
+
         Resource mockSystemPrompt = new ByteArrayResource("System Prompt Template {cultivationId}".getBytes(StandardCharsets.UTF_8));
         lenient().when(promptProperties.getChatSystemPrompt()).thenReturn(mockSystemPrompt);
     }

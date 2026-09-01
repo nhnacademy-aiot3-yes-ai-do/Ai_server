@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -95,8 +96,8 @@ class SensorValidationServiceTest {
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
                 List.of());
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(mockAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(mockAiResponse);
 
         given(objectMapper.writeValueAsString(any())).willReturn("{\"mocked\":\"json\"}");
 
@@ -151,8 +152,8 @@ class SensorValidationServiceTest {
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(10), BigDecimal.valueOf(18))));
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(mockAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(mockAiResponse);
         given(objectMapper.writeValueAsString(any())).willReturn("{}");
 
         SensorValidationRequest request = new SensorValidationRequest(
@@ -172,17 +173,17 @@ class SensorValidationServiceTest {
 
         // AI가 빈 배열을 반환하거나, 요청한 10번 센서가 아닌 다른 센서 결과만 줬다고 가정
         AiSensorResultDto emptyAiResponse = new AiSensorResultDto(List.of(), List.of());
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(emptyAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(emptyAiResponse);
 
         SensorValidationRequest request = new SensorValidationRequest(
                 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
         // findFirst().orElseThrow() 에 걸려 AiAnalysisFailedException이 터지는지 검증
-        org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class, () -> {
-            sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
-        });
+        org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class,
+                () -> sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request));
+
     }
 
     @Test

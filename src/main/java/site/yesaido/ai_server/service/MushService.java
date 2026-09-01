@@ -1,11 +1,8 @@
 package site.yesaido.ai_server.service;
 
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import site.yesaido.ai_server.client.CultivationClient;
@@ -24,8 +21,7 @@ import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor(onConstructor_ = {@Autowired})
-@NoArgsConstructor(access = AccessLevel.PROTECTED, force = true) // CGLIB @Cacheable 프록시 전용 생성자
+@RequiredArgsConstructor
 public class MushService{
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader;
