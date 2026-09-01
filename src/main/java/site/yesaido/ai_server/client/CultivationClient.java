@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import site.yesaido.ai_server.dto.client.cultivation.DailyCultivationDetailResponse;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryListResponse;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationMemberListResponse;
 import site.yesaido.ai_server.dto.client.cultivation.HarvestDetailResponse;
@@ -28,6 +29,30 @@ public interface CultivationClient {
     @GetMapping("/cultivations/{cultivation-id}") // 재배 기본 정보(버섯 id)
     CultivationDetailResponse getCultivation(@RequestHeader("X-User-Id") Long userId,
                                              @PathVariable("cultivation-id") Long cultivationId);
+
+    /**
+     * 일일 피드백에 필요한 재배 상세 응답 전체를 조회합니다.
+     *
+     * <p>기존 {@link #getCultivation(Long, Long)} 메서드는 인사이트와
+     * 센서 검증 기능에서 계속 사용하며, 이 메서드는 일일 피드백에 필요한
+     * 전체 상세 응답을 받기 위한 전용 메서드입니다.</p>
+     *
+     * <p>상위 계층에서 조회한 실제 OWNER 사용자 ID를 전달하여
+     * Cultivation Server의 현재 멤버 권한 검사를 통과합니다.
+     * ADMIN 우회 헤더는 사용하지 않습니다.</p>
+     *
+     * <p>응답의 {@code cultivationId}가 요청 ID와 일치하는지와
+     * {@code myRole}이 정확히 {@code OWNER}인지는 이후 서비스 계층에서
+     * 검증합니다.</p>
+     *
+     * <p>응답의 경작지 이름, 버섯 ID, 상태, 모드와 시작일은
+     * 일일 피드백 Context와 피드백 생성 완료 이벤트에 사용합니다.</p>
+     */
+    @GetMapping("/cultivations/{cultivation-id}")
+    DailyCultivationDetailResponse getDailyCultivationDetail(
+            @RequestHeader("X-User-Id") Long ownerUserId,
+            @PathVariable("cultivation-id") Long cultivationId
+    );
 
     @GetMapping("/cultivations") // 인사이트 조회할 때 내 재배 안뜨게 하게 위해 추가
     CultivationSummaryListResponse getCultivations(@RequestHeader("X-User-Id") Long userId);
