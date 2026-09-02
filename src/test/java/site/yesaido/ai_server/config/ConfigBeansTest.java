@@ -7,14 +7,11 @@ import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.MessageConverter;
 
 import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 
 class ConfigBeansTest {
 
@@ -41,13 +38,9 @@ class ConfigBeansTest {
     @DisplayName("RabbitMQConfig 빈 생성 및 바인딩 검증")
     void rabbitMQConfig() {
         RabbitMQConfig config = new RabbitMQConfig();
-        ConnectionFactory connectionFactory = mock(ConnectionFactory.class);
 
         MessageConverter converter = config.messageConverter();
         assertThat(converter).isNotNull();
-
-        RabbitTemplate template = config.rabbitTemplate(connectionFactory, converter);
-        assertThat(template).isNotNull();
 
         FanoutExchange dlx = config.deadLetterExchange();
         assertThat(dlx).isNotNull();
