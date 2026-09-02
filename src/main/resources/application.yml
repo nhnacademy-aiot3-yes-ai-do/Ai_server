@@ -85,7 +85,7 @@ feign:
       url: ${NOTIFICATION_SERVER_URL}
 
 image-download:
-  allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}
+  allowed-origin: ${MINIO_URL}
 
 daily-feedback:
   outbox:

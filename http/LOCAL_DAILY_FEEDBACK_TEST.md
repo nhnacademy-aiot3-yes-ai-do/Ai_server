@@ -74,7 +74,7 @@ export AI_SERVER_URL=http://localhost:8080
 ./mvnw spring-boot:run
 ```
 
-현재 Workspace 환경 파일의 `MINIO_URL`은 AI의 `IMAGE_DOWNLOAD_ALLOWED_ORIGIN`과 같은 origin을 사용해야 합니다. 두 값의 scheme, host, 유효 port 중 하나라도 다르면 AI가 안전을 위해 사진 다운로드를 거부합니다.
+현재 Workspace 환경 파일의 `MINIO_URL`은 Cultivation과 AI가 함께 사용합니다. 두 서버가 받은 값의 scheme, host, 유효 port 중 하나라도 다르면 AI가 안전을 위해 사진 다운로드를 거부합니다.
 
 ### 4.3 Notification Server: 9005
 
@@ -179,7 +179,7 @@ HTTP 파일의 요청을 1번부터 10번까지 차례대로 실행합니다.
 AI 로그에서 origin 불일치 여부를 확인합니다. 아래 두 설정이 동일한 origin이어야 합니다.
 
 - Cultivation: `MINIO_URL`
-- AI: `IMAGE_DOWNLOAD_ALLOWED_ORIGIN`
+- AI: `MINIO_URL`
 
 Presigned URL 전체를 채팅, 이슈, 로그에 붙이지 말고 scheme/host/port만 비교하세요.
 
