@@ -17,9 +17,7 @@ import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
-import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
-import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
-import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageResponse;
+import site.yesaido.ai_server.dto.client.sensor.*;
 import site.yesaido.ai_server.entity.DailyFeedback;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
@@ -379,5 +377,84 @@ class InsightServiceTest {
         assertThat(detail.dailyRecords()).hasSize(1);
         assertThat(detail.dailyRecords().getFirst().dayNumber()).isEqualTo(1);
         assertThat(detail.dailyRecords().getFirst().dailyFeedback()).isEqualTo("1일차 피드백 내용");
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 인사이트 ID로 상세 조회 시 IllegalArgumentException 발생 검증")
+    void getInsightDetail_NotFound() {
+        when(insightRepository.findById(999L)).thenReturn(Optional.empty());
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> insightService.getInsightDetail(999L)
+        );
+    }
+
+    @Test
+    @DisplayName("추가 센서(pH 등) 및 일일 피드백(병충해 의심, 수확 모드 전환)이 포함된 경우 종합 분석 정상 동작 검증")
+    void saveInsight_WithAdditionalSensorsAndFeedbacks() {
+        setUpMockChatClient("종합 분석 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 💡 헬퍼 메서드로 sensorList 생성 분리
+        site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse sensorList = createSampleSensorList();
+        when(cultivationClient.getAllCultivationSensor(100L, 1L)).thenReturn(sensorList);
+
+        // 일일 피드백 (모드전환, 병충해 의심 포함)
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode snapshot = mapper.createObjectNode();
+        snapshot.putObject("cultivationDetail").put("mode", "HARVEST");
+        snapshot.putObject("visionAnalysis").put("status", "DISEASE_SUSPECTED");
+        snapshot.putObject("notificationMetrics")
+                .put("totalEvents", 5)
+                .put("ruleEngineCooldownThresholdEvents", 1)
+                .put("actuatorControlSuccessEvents", 4);
+
+        DailyFeedback df = DailyFeedback.builder()
+                .cultivationId(1L)
+                .feedbackDate(java.time.LocalDate.of(2026, 8, 1))
+                .hasVisionAnalysis(true)
+                .content("피드백 상세 내용 1일차")
+                .contextSnapshot(snapshot)
+                .build();
+
+        when(dailyFeedbackRepository.findAllByCultivationId(1L)).thenReturn(List.of(df));
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNotNull();
+        verify(insightRepository).save(any(Insight.class));
+    }
+
+    private site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse createSampleSensorList() {
+        site.yesaido.ai_server.dto.client.sensor.CultivationSensorTypeResponse phSensor =
+                new site.yesaido.ai_server.dto.client.sensor.CultivationSensorTypeResponse(10L, "PH");
+        site.yesaido.ai_server.dto.client.sensor.CultivationSensorTypeResponse tempSensor =
+                new site.yesaido.ai_server.dto.client.sensor.CultivationSensorTypeResponse(11L, "TEMPERATURE");
+
+        site.yesaido.ai_server.dto.client.sensor.CultivationSensorResponse sensor1 =
+                new site.yesaido.ai_server.dto.client.sensor.CultivationSensorResponse(1L, "추가센서", List.of(phSensor, tempSensor));
+
+        return new site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse(List.of(sensor1));
+    }
+
+    @Test
+    @DisplayName("saveInsight: Insight 엔티티 직접 저장 및 응답 변환 검증")
+    void saveInsight_directEntity() {
+        Insight mockInsight = Insight.builder()
+                .cultivationId(1L)
+                .mushroomId(2L)
+                .summary("직접 저장 요약문")
+                .build();
+
+        when(insightRepository.save(mockInsight)).thenReturn(mockInsight);
+
+        InsightCandidateResponse response = insightService.saveInsight(mockInsight);
+
+        assertThat(response).isNotNull();
+        assertThat(response.summary()).isEqualTo("직접 저장 요약문");
     }
 }
