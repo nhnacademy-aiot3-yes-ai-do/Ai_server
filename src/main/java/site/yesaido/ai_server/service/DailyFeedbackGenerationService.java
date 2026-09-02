@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -23,9 +24,14 @@ import java.util.Map;
  * 통과한 JSON만 외부 모델에 전달합니다. 원본 Context와 내부 ID,
  * 민감한 연결정보는 프롬프트에 직접 전달하지 않습니다.</p>
  *
- * <p>Gemini를 먼저 호출하고 호출 또는 출력 검증에 실패하면 동일한
- * 프롬프트로 Ollama를 한 번 호출합니다. 두 모델의 결과 모두
- * {@link DailyFeedbackOutputValidator}를 통과한 경우에만 반환합니다.</p>
+ * <p>Gemini를 우선 호출하고, 호출 또는 출력 검증에 실패하면
+ * {@code ollamaChatClient} Bean이 존재하는 경우에만 같은 프롬프트로
+ * Ollama fallback을 한 번 수행합니다. Ollama 채팅 Bean이 없어도
+ * 서버 기동은 정상적으로 허용하며, Gemini 실패 후 fallback을 사용할
+ * 수 없으면 안전한 최종 예외를 반환합니다.</p>
+ *
+ * <p>선택적인 Ollama 채팅 fallback은 팀원이 구성한 기존 Ollama
+ * embedding 및 PGVector 구성과 독립적인 기능입니다.</p>
  *
  * <p>이 서비스는 DailyFeedback DB 저장, RabbitMQ 이벤트 발행,
  * 외부 데이터 수집, 배치 반복과 스케줄링을 담당하지 않습니다.</p>
@@ -37,10 +43,11 @@ public class DailyFeedbackGenerationService {
     private static final String PREPARATION_FAILURE_MESSAGE = "일일 피드백 생성 준비 과정에 실패했습니다.";
     private static final String GENERATION_FAILURE_MESSAGE = "일일 피드백을 생성하지 못했습니다.";
     private static final String GEMINI_GENERATION_STAGE = "Gemini 호출 및 출력 검증";
+    private static final String OLLAMA_PROVIDER_LOOKUP_STAGE = "Ollama fallback Bean 조회";
     private static final String OLLAMA_GENERATION_STAGE = "Ollama 호출 및 출력 검증";
 
     private final ChatClient geminiChatClient;
-    private final ChatClient ollamaChatClient;
+    private final ObjectProvider<ChatClient> ollamaChatClientProvider;
     private final ObjectMapper objectMapper;
     private final DailyFeedbackPromptContextSanitizer contextSanitizer;
     private final DailyFeedbackOutputValidator outputValidator;
@@ -51,7 +58,7 @@ public class DailyFeedbackGenerationService {
             @Qualifier("geminiChatClient")
             ChatClient geminiChatClient,
             @Qualifier("ollamaChatClient")
-            ChatClient ollamaChatClient,
+            ObjectProvider<ChatClient> ollamaChatClientProvider,
 
             ObjectMapper objectMapper,
             DailyFeedbackPromptContextSanitizer contextSanitizer,
@@ -63,7 +70,7 @@ public class DailyFeedbackGenerationService {
             Resource userPromptResource
     ) {
         this.geminiChatClient = geminiChatClient;
-        this.ollamaChatClient = ollamaChatClient;
+        this.ollamaChatClientProvider = ollamaChatClientProvider;
         this.objectMapper = objectMapper;
         this.contextSanitizer = contextSanitizer;
         this.outputValidator = outputValidator;
@@ -72,16 +79,25 @@ public class DailyFeedbackGenerationService {
     }
 
     /**
-     * 일일 피드백 Context를 안전한 프롬프트로 변환하고 검증된 피드백을 생성합니다.
+     * 일일 피드백 Context를 안전한 프롬프트로 변환하고
+     * 검증된 피드백을 생성합니다.
      *
-     * <p>프롬프트 준비는 모델 호출 전에 한 번만 수행합니다. Gemini 호출이나
-     * 출력 검증에 실패하면 같은 프롬프트로 Ollama를 한 번 호출합니다.</p>
+     * <p>프롬프트 준비는 모델 호출 전에 한 번만 수행합니다.
+     * Gemini를 우선 호출하며, Gemini 호출 또는 출력 검증에 실패하면
+     * {@code ollamaChatClient} Bean이 존재할 때만 동일한 프롬프트로
+     * Ollama fallback을 한 번 수행합니다.</p>
+     *
+     * <p>Ollama 채팅 Bean이 없거나 Provider 조회에 실패하면 모델 입력이나
+     * 내부 오류 정보를 노출하지 않는 안전한 최종 생성 실패 예외를
+     * 발생시킵니다. 이 선택적 fallback은 Ollama embedding 구성과
+     * 독립적으로 동작합니다.</p>
      *
      * @param context 외부 데이터 수집과 계약 검증을 완료한 일일 피드백 Context
      * @return 줄바꿈과 앞뒤 공백이 정규화되고 저장 가능성이 검증된 피드백 문자열
      * @throws IllegalArgumentException context가 null인 경우
-     * @throws AiAnalysisFailedException Context 정제 또는 프롬프트 준비에 실패하거나
-     *         두 모델 모두 호출 또는 출력 검증에 실패한 경우
+     * @throws AiAnalysisFailedException Context 정제 또는 프롬프트 준비에
+     *                                   실패하거나, Gemini 실패 후 사용 가능한
+     *                                   fallback이 없거나 fallback 처리에도 실패한 경우
      */
     public String generate(DailyFeedbackContext context) {
         if (context == null) {
@@ -152,10 +168,27 @@ public class DailyFeedbackGenerationService {
             logModelFailure(GEMINI_GENERATION_STAGE, exception);
         }
 
+        ChatClient ollamaChatClient = getOllamaChatClientIfAvailable();
+
+        if (ollamaChatClient == null) {
+            log.warn("Ollama fallback Bean을 사용할 수 없음");
+            throw new AiAnalysisFailedException(GENERATION_FAILURE_MESSAGE);
+        }
+
         try {
             return callAndValidate(ollamaChatClient, preparedPrompt);
         } catch (RuntimeException exception) {
             logModelFailure(OLLAMA_GENERATION_STAGE, exception);
+
+            throw new AiAnalysisFailedException(GENERATION_FAILURE_MESSAGE);
+        }
+    }
+
+    private ChatClient getOllamaChatClientIfAvailable() {
+        try {
+            return ollamaChatClientProvider.getIfAvailable();
+        } catch (RuntimeException exception) {
+            logModelFailure(OLLAMA_PROVIDER_LOOKUP_STAGE, exception);
 
             throw new AiAnalysisFailedException(GENERATION_FAILURE_MESSAGE);
         }

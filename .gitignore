@@ -43,3 +43,7 @@ application-dev.yml
 
 ### macOS ###
 .DS_Store
+
+### Local HTTP integration test assets ###
+/http/local-test-images/
+http-client.private.env.json
