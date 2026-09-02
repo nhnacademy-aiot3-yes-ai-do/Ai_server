@@ -2,10 +2,7 @@ package site.yesaido.ai_server.client;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
 import site.yesaido.ai_server.dto.client.cultivation.DailyCultivationDetailResponse;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationSummaryListResponse;
@@ -60,6 +57,11 @@ public interface CultivationClient {
     @GetMapping("/cultivations/{cultivation-id}/harvest") // 수확 정보 조회
     HarvestDetailResponse getHarvest(@PathVariable("cultivation-id") Long cultivationId,
                                      @RequestHeader("X-User-Id") Long userId);
+
+    @PutMapping("/internal/cultivations/{cultivation-id}/harvest/product-score")
+    ProductScoreUpdateResponse updateProductScore(
+            @PathVariable("cultivation-id") Long cultivationId,
+            @RequestBody ProductScoreUpdateRequest request);
 
     @GetMapping("/cultivations/{cultivation-id}/sensors") // Cultivation에 어떤 센서 달아놨나 조회
     CultivationSensorListResponse getAllCultivationSensor(@RequestHeader("X-User-Id") Long userId,
