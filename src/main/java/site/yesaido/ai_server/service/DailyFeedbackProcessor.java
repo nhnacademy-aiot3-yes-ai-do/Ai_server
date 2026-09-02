@@ -28,7 +28,14 @@ import java.util.Optional;
  * DB에 저장된 기존 피드백을 반환합니다.</p>
  *
  * <p>신규 대상은 Context 수집, 원본 Context Snapshot 변환,
- * LLM 피드백 생성, 엔티티 생성과 멱등 저장 순서로 처리합니다.</p>
+ * LLM 피드백 생성, 엔티티 생성과 피드백 및 PENDING Outbox의
+ * 멱등 저장 순서로 처리합니다.</p>
+ *
+ * <p>외부 API와 LLM 호출은 {@link Propagation#NOT_SUPPORTED}
+ * 범위에서 수행하므로 DB 트랜잭션을 점유하지 않습니다. 실제 피드백과
+ * PENDING Outbox의 원자적 저장은 {@link DailyFeedbackPersistenceService}를
+ * 통해 별도 Atomic Writer에 위임합니다.</p>
+ *
  *
  * <p>여러 경작지 반복, 공통 외부 데이터 조회, 실패 격리,
  * RabbitMQ 이벤트 발행과 스케줄링은 담당하지 않습니다.</p>
@@ -108,7 +115,7 @@ public class DailyFeedbackProcessor {
                         .contextSnapshot(contextSnapshot)
                         .build();
 
-        return persistenceService.saveOrGet(candidate);
+        return persistenceService.saveOrGet(candidate, ownerUserId);
     }
 
     private JsonNode createContextSnapshot(DailyFeedbackContext context) {

@@ -183,6 +183,8 @@ class DailyFeedbackGenerationServiceTest {
             throws JsonProcessingException {
         // 준비
         DailyFeedbackContext context = validContext();
+        String originalContextJson =
+                objectMapper.writeValueAsString(context);
 
         String geminiOutput =
                 withCrLfAndTrailingWhitespace(validFeedback());
@@ -276,23 +278,28 @@ class DailyFeedbackGenerationServiceTest {
                         .asText()
         ).isEqualTo(SENSOR_UNIT);
 
-        assertThat(
-                statistics
-                        .path("minimumValue")
-                        .decimalValue()
-        ).isEqualByComparingTo("18.50");
+        BigDecimal promptedMinimumValue =
+                statistics.path("minimumValue").decimalValue();
+        BigDecimal promptedAverageValue =
+                statistics.path("averageValue").decimalValue();
+        BigDecimal promptedMaximumValue =
+                statistics.path("maximumValue").decimalValue();
 
-        assertThat(
-                statistics
-                        .path("averageValue")
-                        .decimalValue()
-        ).isEqualByComparingTo("20.25");
+        assertThat(promptedMinimumValue)
+                .isEqualByComparingTo("18.50");
 
-        assertThat(
-                statistics
-                        .path("maximumValue")
-                        .decimalValue()
-        ).isEqualByComparingTo("22.00");
+        assertThat(promptedAverageValue)
+                .isEqualByComparingTo("20.26");
+
+        assertThat(promptedMaximumValue)
+                .isEqualByComparingTo("22.01");
+
+        assertThat(sanitizedContextJson)
+                .doesNotContain(
+                        "18.504",
+                        "20.255",
+                        "22.006"
+                );
 
         assertThat(
                 statistics
@@ -300,12 +307,34 @@ class DailyFeedbackGenerationServiceTest {
                         .intValue()
         ).isEqualTo(96);
 
+        JsonNode noDataStatistics =
+                sanitizedContext
+                        .path("sensorStatistics")
+                        .get(1);
+
+        assertThat(noDataStatistics.path("aggregationPointCount").intValue())
+                .isZero();
+        assertThat(noDataStatistics.path("minimumValue").isNull())
+                .isTrue();
+        assertThat(noDataStatistics.path("averageValue").isNull())
+                .isTrue();
+        assertThat(noDataStatistics.path("maximumValue").isNull())
+                .isTrue();
+
         assertThat(
                 sanitizedContext
                         .path("environmentCompliance")
                         .path("temperatureCompliance")
                         .decimalValue()
-        ).isEqualByComparingTo("92.50");
+        ).isEqualByComparingTo("92.5001");
+
+        assertThat(
+                currentThreshold.path("minValue").decimalValue()
+        ).isEqualByComparingTo("19.1234");
+
+        assertThat(
+                currentThreshold.path("maxValue").decimalValue()
+        ).isEqualByComparingTo("23.5678");
 
         assertThat(
                 sanitizedContext
@@ -378,6 +407,15 @@ class DailyFeedbackGenerationServiceTest {
                         CONTEXT_JSON_START,
                         sanitizedContextJson
                 );
+
+        assertThat(objectMapper.writeValueAsString(context))
+                .isEqualTo(originalContextJson);
+        assertThat(context.sensorStatistics().getFirst().minimumValue())
+                .isEqualTo(new BigDecimal("18.504"));
+        assertThat(context.sensorStatistics().getFirst().averageValue())
+                .isEqualTo(new BigDecimal("20.255"));
+        assertThat(context.sensorStatistics().getFirst().maximumValue())
+                .isEqualTo(new BigDecimal("22.006"));
     }
 
     @ParameterizedTest(name = "[{index}] {0}")
@@ -939,8 +977,8 @@ class DailyFeedbackGenerationServiceTest {
                         CULTIVATION_ID,
                         SENSOR_TYPE,
                         SENSOR_UNIT,
-                        new BigDecimal("19.00"),
-                        new BigDecimal("23.00")
+                        new BigDecimal("19.1234"),
+                        new BigDecimal("23.5678")
                 );
 
         SensorChannelStatistics sensorStatistics =
@@ -951,17 +989,31 @@ class DailyFeedbackGenerationServiceTest {
                                 SENSOR_TYPE,
                                 SENSOR_UNIT
                         ),
-                        new BigDecimal("18.50"),
-                        new BigDecimal("20.25"),
-                        new BigDecimal("22.00"),
+                        new BigDecimal("18.504"),
+                        new BigDecimal("20.255"),
+                        new BigDecimal("22.006"),
                         96
+                );
+
+        SensorChannelStatistics noDataSensorStatistics =
+                new SensorChannelStatistics(
+                        new SensorChannelKey(
+                                CULTIVATION_ID,
+                                "ZZZ-NO-DATA-EUI",
+                                "HUMIDITY",
+                                "%"
+                        ),
+                        null,
+                        null,
+                        null,
+                        0
                 );
 
         DailyEnvironmentCompliance environmentCompliance =
                 new DailyEnvironmentCompliance(
                         CULTIVATION_ID,
                         FEEDBACK_DATE,
-                        new BigDecimal("92.50"),
+                        new BigDecimal("92.5001"),
                         new BigDecimal("88.00"),
                         new BigDecimal("95.00"),
                         new BigDecimal("90.00")
@@ -993,7 +1045,10 @@ class DailyFeedbackGenerationServiceTest {
                 cultivationDetail,
                 mushroomReference,
                 List.of(currentThreshold),
-                List.of(sensorStatistics),
+                List.of(
+                        sensorStatistics,
+                        noDataSensorStatistics
+                ),
                 environmentCompliance,
                 notificationMetrics,
                 DailyVisionAnalysisSnapshot.withoutPhoto(
@@ -1008,7 +1063,7 @@ class DailyFeedbackGenerationServiceTest {
                     테스트 재배지는 느타리버섯을 재배 중이며 입력된 환경 지표를 확인했습니다.
 
                     ## 센서별 통계
-                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
+                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.26℃, 최댓값 22.01℃, 집계점 96개입니다.
 
                     ## 이탈 및 제어
                     임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
@@ -1027,7 +1082,7 @@ class DailyFeedbackGenerationServiceTest {
                     Ollama fallback 결과로 재배지의 환경 지표를 확인했습니다.
 
                     ## 센서별 통계
-                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.25℃, 최댓값 22.00℃, 집계점 96개입니다.
+                    - EUI-TEST-001 TEMPERATURE: 15분 평균 집계점 최솟값 18.50℃, 평균값 20.26℃, 최댓값 22.01℃, 집계점 96개입니다.
 
                     ## 이탈 및 제어
                     임계값 이탈 알림 3건, 제어 성공 2건, 제어 실패 1건입니다.
