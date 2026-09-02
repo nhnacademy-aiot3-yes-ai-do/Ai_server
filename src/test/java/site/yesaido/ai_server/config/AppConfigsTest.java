@@ -21,6 +21,8 @@ class AppConfigsTest {
         assertThat(client).isNotNull();
     }
 
+
+
     @Test
     @DisplayName("ImageDownloadClientConfig RestClient 빈 생성 검증")
     void imageDownloadRestClientBean() {

@@ -23,14 +23,15 @@ public class InsightController {
     @GetMapping("/candidates")
     public ResponseEntity<ApiResponse<List<InsightCandidateResponse>>> getCandidates(
             @RequestHeader("X-User-Id") Long userId,
-            @RequestParam("mushroom-id") Long mushroomId,
-            @RequestParam("temp") BigDecimal temp,
-            @RequestParam("hum") BigDecimal hum,
-            @RequestParam("co2") BigDecimal co2,
-            @RequestParam("light") BigDecimal light
+            @RequestParam(value = "cultivationId", required = false) Long cultivationId,
+            @RequestParam(value = "mushroom-id", required = false) Long mushroomId,
+            @RequestParam(value = "temp", required = false) BigDecimal temp,
+            @RequestParam(value = "hum", required = false) BigDecimal hum,
+            @RequestParam(value = "co2", required = false) BigDecimal co2,
+            @RequestParam(value = "light", required = false) BigDecimal light
     ) {
-        List<InsightCandidateResponse> candidates = insightService.getInsightCandidates(
-                userId, mushroomId, temp, hum, co2, light
+        List<InsightCandidateResponse> candidates = insightService.getInsightCandidatesByCultivation(
+                userId, cultivationId, mushroomId, temp, hum, co2, light
         );
         return ResponseEntity.ok(ApiResponse.success(candidates));
     }

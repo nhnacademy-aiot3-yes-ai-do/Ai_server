@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.NullMarked;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.google.genai.GoogleGenAiChatModel;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
@@ -95,16 +96,37 @@ public class RotatingApiKey implements ChatModel{
     }
 
     @Override
+    public GoogleGenAiChatOptions getOptions() {
+        return this.defaultOptions;
+    }
+
+    @Override
     public Flux<ChatResponse> stream(Prompt prompt) {
         Prompt safePrompt = ensureGoogleOptions(prompt);
         return streamWithRetry(safePrompt, 0, models.size());
     }
 
     private Prompt ensureGoogleOptions(Prompt prompt) {
-        if (prompt.getOptions() instanceof GoogleGenAiChatOptions) {
+        ChatOptions options = prompt.getOptions();
+        log.info("[RotatingApiKey.ensureGoogleOptions] 원본 options 클래스: {}, 내용: {}",
+                options != null ? options.getClass().getName() : "null", options);
+
+        if (options instanceof GoogleGenAiChatOptions googleGenAiChatOptions) {
+            log.info("[RotatingApiKey.ensureGoogleOptions] 이미 GoogleGenAiChatOptions입니다. 도구(toolCallbacks) 수: {}",
+                    googleGenAiChatOptions.getToolCallbacks() != null ? googleGenAiChatOptions.getToolCallbacks().size() : 0);
             return prompt;
         }
-        return new Prompt(prompt.getInstructions(), this.defaultOptions);
+
+        GoogleGenAiChatOptions.Builder builder = this.defaultOptions.mutate();
+        if (options != null) {
+            builder.combineWith(options.mutate());
+        }
+
+        GoogleGenAiChatOptions builtOptions = builder.build();
+        log.info("[RotatingApiKey.ensureGoogleOptions] 변환 완료된 GoogleGenAiChatOptions 내 도구(toolCallbacks) 수: {}",
+                builtOptions.getToolCallbacks() != null ? builtOptions.getToolCallbacks().size() : 0);
+
+        return new Prompt(prompt.getInstructions(), builtOptions);
     }
 
     // steam 호출 중 429 발생 시 다른 키로 바꿔치기
