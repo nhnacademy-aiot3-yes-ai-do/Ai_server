@@ -33,5 +33,7 @@ runs:
         # Vision
         echo "VISION_SERVER_URL=http://vision-test.invalid" >> "$GITHUB_ENV"
         
+        # Notification
+        echo "NOTIFICATION_SERVER_URL=http://notification-test.invalid" >> "$GITHUB_ENV"
         # Minio
         echo "IMAGE_DOWNLOAD_ALLOWED_ORIGIN=http://storage.java21.net:9999" >> "$GITHUB_ENV"

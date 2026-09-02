@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Answers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -12,10 +13,11 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.CultivationDetailResponse;
+import static org.mockito.Mockito.lenient;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.times;
@@ -41,8 +43,9 @@ class SensorValidationServiceTest {
     @Mock(answer = Answers.RETURNS_DEEP_STUBS)
     private ChatClient geminiChatClient;
 
-    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
-    private ChatClient ollamaChatClient;
+    @Mock
+    private PromptProperties promptProperties;
+
     @Mock private CultivationClient cultivationClient;
     @Mock private ObjectMapper objectMapper;
     @Mock private StringRedisTemplate redisTemplate;
@@ -58,13 +61,16 @@ class SensorValidationServiceTest {
     private static final String REDIS_KEY = "mushroom:sensor:validation:1";
 
     @BeforeEach
-    void setup(){ // @Value에 값 테스트에서 안 넣어버리는 문제 해결 위해 가짜 파일 채워줌
+    void setup() {
         sensorValidationService = new SensorValidationService(
-                geminiChatClient, ollamaChatClient, cultivationClient,
-                objectMapper, redisTemplate, mushCsvReader);
+                geminiChatClient, cultivationClient,
+                objectMapper, redisTemplate, mushCsvReader, promptProperties);
 
-        ReflectionTestUtils.setField(sensorValidationService, "systemResource", new ByteArrayResource("system prompt".getBytes()));
-        ReflectionTestUtils.setField(sensorValidationService, "userResource", new ByteArrayResource("user prompt".getBytes()));
+        // ✅ lenient()를 붙여서 AI를 호출하지 않는 캐시 테스트에서도 에러가 안 나도록 설정!
+        lenient().when(promptProperties.getSensorValidationSystemPrompt())
+                .thenReturn(new ByteArrayResource("system prompt".getBytes()));
+        lenient().when(promptProperties.getSensorValidationUserPrompt())
+                .thenReturn(new ByteArrayResource("user prompt".getBytes()));
 
         given(cultivationClient.getCultivation(USER_ID, CULTIVATION_ID))
                 .willReturn(new CultivationDetailResponse(CULTIVATION_ID, MUSHROOM_ID, "ACTIVE", "AUTO", LocalDateTime.now()));
@@ -72,7 +78,6 @@ class SensorValidationServiceTest {
         given(mushCsvReader.readMushroomCsv())
                 .willReturn(List.of(new MushroomCsvDto(MUSHROOM_ID, "느타리버섯", "title", "content")));
 
-        // 공통 모킹 2: Redis 해시 오퍼레이션 강제 타입 주입 (컴파일 에러 방지)
         given(redisTemplate.<String, String>opsForHash()).willReturn(hashOps);
     }
 
@@ -91,8 +96,8 @@ class SensorValidationServiceTest {
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
                 List.of());
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(mockAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(mockAiResponse);
 
         given(objectMapper.writeValueAsString(any())).willReturn("{\"mocked\":\"json\"}");
 
@@ -147,8 +152,8 @@ class SensorValidationServiceTest {
         AiSensorResultDto mockAiResponse = new AiSensorResultDto(
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(15), BigDecimal.valueOf(20))),
                 List.of(new SensorRangeDto(10L, BigDecimal.valueOf(10), BigDecimal.valueOf(18))));
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(mockAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(mockAiResponse);
         given(objectMapper.writeValueAsString(any())).willReturn("{}");
 
         SensorValidationRequest request = new SensorValidationRequest(
@@ -168,17 +173,17 @@ class SensorValidationServiceTest {
 
         // AI가 빈 배열을 반환하거나, 요청한 10번 센서가 아닌 다른 센서 결과만 줬다고 가정
         AiSensorResultDto emptyAiResponse = new AiSensorResultDto(List.of(), List.of());
-        given(geminiChatClient.prompt().system(any(Consumer.class)).user(anyString()).call().entity(AiSensorResultDto.class))
-                .willReturn(emptyAiResponse);
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willReturn(emptyAiResponse);
 
         SensorValidationRequest request = new SensorValidationRequest(
                 10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
         );
 
         // findFirst().orElseThrow() 에 걸려 AiAnalysisFailedException이 터지는지 검증
-        org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class, () -> {
-            sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
-        });
+        org.junit.jupiter.api.Assertions.assertThrows(AiAnalysisFailedException.class,
+                () -> sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request));
+
     }
 
     @Test
@@ -211,5 +216,23 @@ class SensorValidationServiceTest {
         assertThat(response.recommendedMin()).isEqualByComparingTo(BigDecimal.valueOf(15));
         assertThat(response.recommendedMax()).isEqualByComparingTo(BigDecimal.valueOf(18));
         assertThat(response.message()).contains("적절한 임계값입니다");
+    }
+
+    @Test
+    @DisplayName("Gemini 모든 키 소진 시 GeminiAllKeysExhaustedException이 그대로 전파되는지 검증")
+    void validate_GeminiAllKeysExhausted() {
+        given(hashOps.get(anyString(), anyString())).willReturn(null);
+
+        // Gemini 호출 시 키 소진 예외가 터지도록 모킹
+        given(geminiChatClient.prompt().system(ArgumentMatchers.<Consumer<ChatClient.PromptSystemSpec>>any()).user(anyString()).call().
+                entity(AiSensorResultDto.class)).willThrow(new site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException(9, java.time.Instant.now()));
+
+        SensorValidationRequest request = new SensorValidationRequest(
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(16), BigDecimal.valueOf(19)
+        );
+
+        // AiAnalysisFailedException으로 덮어씌워지지 않고 GeminiAllKeysExhaustedException이 그대로 전파되는지 검증
+        org.junit.jupiter.api.Assertions.assertThrows(site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException.class,
+                () -> sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request));
     }
 }

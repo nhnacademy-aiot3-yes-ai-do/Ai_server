@@ -57,15 +57,12 @@ spring:
       base-url: http://ollama.java21.net
       embedding:
         model: bge-m3:latest
-      chat:
-        model: qwen3.5:9b
-        temperature: 0.0
 
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
         chat:
-          model: gemini-2.5-flash-lite
+          model: gemini-3.5-flash-lite
           temperature: 0.0
 
   rabbitmq:
@@ -80,6 +77,8 @@ feign:
       url: ${CULTIVATION_SERVER_URL}
     vision-server:
       url: ${VISION_SERVER_URL}
+    notification-server:
+      url: ${NOTIFICATION_SERVER_URL}
 
 image-download:
   allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}

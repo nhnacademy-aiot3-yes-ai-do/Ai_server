@@ -81,24 +81,20 @@ public class DailyFeedback {
     private LocalDateTime createdAt;
 
     @Builder
-    public DailyFeedback(Long cultivationId, LocalDate feedbackDate,
-                         boolean hasVisionAnalysis, String content, JsonNode contextSnapshot) {
-        Long validatedCultivationId =
-                Objects.requireNonNull(cultivationId, "cultivationId는 필수이며 null일 수 없습니다.");
+    public DailyFeedback(Long cultivationId, LocalDate feedbackDate, boolean hasVisionAnalysis, String content, JsonNode contextSnapshot) {
+        Long validatedCultivationId = Objects.requireNonNull(cultivationId, "cultivationId는 필수이며 null일 수 없습니다.");
 
         if (validatedCultivationId <= 0) {
             throw new IllegalArgumentException("cultivationId는 0보다 커야 합니다.");
         }
 
-        LocalDate validatedFeedbackDate =
-                Objects.requireNonNull(feedbackDate, "feedbackDate는 필수이며 null일 수 없습니다.");
+        LocalDate validatedFeedbackDate = Objects.requireNonNull(feedbackDate, "feedbackDate는 필수이며 null일 수 없습니다.");
 
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("content는 null이거나 빈 문자열 또는 공백일 수 없습니다.");
         }
 
-        JsonNode validatedContextSnapshot =
-                Objects.requireNonNull(contextSnapshot, "contextSnapshot은 필수이며 null일 수 없습니다.");
+        JsonNode validatedContextSnapshot = Objects.requireNonNull(contextSnapshot, "contextSnapshot은 필수이며 null일 수 없습니다.");
 
         if (!validatedContextSnapshot.isObject()) {
             throw new IllegalArgumentException("contextSnapshot은 JSON object여야 합니다.");
@@ -110,5 +106,25 @@ public class DailyFeedback {
         this.content = content;
         this.contextSnapshot = validatedContextSnapshot.deepCopy();
         this.createdAt = LocalDateTime.now(ZoneId.of("Asia/Seoul"));
+    }
+
+    /**
+     * 피드백 생성 당시 저장된 Context Snapshot의 복사본을 반환합니다.
+     *
+     * <p>{@link JsonNode}은 변경 가능한 객체이므로 내부 필드를 직접
+     * 반환하지 않습니다. 호출자가 반환받은 JSON을 수정하더라도
+     * 엔티티 내부 Snapshot에는 영향을 주지 않습니다.</p>
+     *
+     * <p>JPA 기본 생성자로 생성된 직후처럼 필드가 아직 초기화되지 않은
+     * 상태에서는 null을 반환합니다.</p>
+     *
+     * <p>{@link Id}가 필드에 선언되어 이 엔티티는 JPA field access
+     * 방식을 사용합니다. 따라서 이 getter를 명시적으로 구현해도
+     * 영속성 필드 매핑 방식은 변경되지 않습니다.</p>
+     *
+     * @return Context Snapshot의 방어적 복사본 또는 미초기화 상태이면 null
+     */
+    public JsonNode getContextSnapshot() {
+        return contextSnapshot == null ? null : contextSnapshot.deepCopy();
     }
 }
