@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,10 +55,12 @@ class DailyFeedbackContextTest {
     }
 
     private SensorChannelStatistics createSensorStat(Long cultivationId) {
-        SensorChannelKey channelKey = new SensorChannelKey(cultivationId, "EUI-01", "TEMPERATURE", "°C");
-        return new SensorChannelStatistics(
-                channelKey, BigDecimal.valueOf(18.0), BigDecimal.valueOf(20.0), BigDecimal.valueOf(22.0), 96
-        );
+        return createSensorStat(cultivationId, "EUI-01", "TEMPERATURE", "°C", BigDecimal.valueOf(18.0), BigDecimal.valueOf(20.0), BigDecimal.valueOf(22.0));
+    }
+
+    private SensorChannelStatistics createSensorStat(Long cultivationId, String eui, String sensorType, String unit, BigDecimal min, BigDecimal avg, BigDecimal max) {
+        SensorChannelKey channelKey = new SensorChannelKey(cultivationId, eui, sensorType, unit);
+        return new SensorChannelStatistics(channelKey, min, avg, max, 96);
     }
 
     private DailyEnvironmentCompliance createCompliance(Long cultivationId, LocalDate date) {
@@ -74,7 +77,7 @@ class DailyFeedbackContextTest {
     }
 
     @Test
-    @DisplayName("DailyFeedbackContext 정상 생성 및 필드 일치 검증")
+    @DisplayName("DailyFeedbackContext 정상 생성 및 정렬/방어적 복사 검증")
     void create_success() {
         Long cultivationId = 1L;
         LocalDate feedbackDate = LocalDate.of(2026, 9, 1);
@@ -82,8 +85,15 @@ class DailyFeedbackContextTest {
 
         DailyCultivationDetailResponse detail = createDetail(cultivationId, 10L, "OWNER");
         MushroomReferenceInfoResponse mushroomRef = createMushroomRef();
-        List<DataGeneratorThresholdResponse> thresholds = List.of(createCurrentThreshold(cultivationId));
-        List<SensorChannelStatistics> sensorStats = List.of(createSensorStat(cultivationId));
+
+        DataGeneratorThresholdResponse threshold1 = new DataGeneratorThresholdResponse(cultivationId, "HUMIDITY", "%", BigDecimal.valueOf(70), BigDecimal.valueOf(90));
+        DataGeneratorThresholdResponse threshold2 = new DataGeneratorThresholdResponse(cultivationId, "TEMPERATURE", "°C", BigDecimal.valueOf(18), BigDecimal.valueOf(24));
+        List<DataGeneratorThresholdResponse> thresholds = List.of(threshold1, threshold2);
+
+        SensorChannelStatistics stat1 = createSensorStat(cultivationId, "EUI-02", "HUMIDITY", "%", BigDecimal.valueOf(70), BigDecimal.valueOf(80), BigDecimal.valueOf(90));
+        SensorChannelStatistics stat2 = createSensorStat(cultivationId, "EUI-01", "TEMPERATURE", "°C", BigDecimal.valueOf(18), BigDecimal.valueOf(20), BigDecimal.valueOf(22));
+        List<SensorChannelStatistics> sensorStats = List.of(stat1, stat2);
+
         DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
         DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
         DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
@@ -95,15 +105,16 @@ class DailyFeedbackContextTest {
 
         assertThat(context.cultivationId()).isEqualTo(cultivationId);
         assertThat(context.feedbackDate()).isEqualTo(feedbackDate);
-        assertThat(context.currentThresholds()).hasSize(1);
-        assertThat(context.sensorStatistics()).hasSize(1);
+        assertThat(context.currentThresholds()).hasSize(2);
+        assertThat(context.currentThresholds().getFirst().sensorType()).isEqualTo("HUMIDITY");
+        assertThat(context.sensorStatistics()).hasSize(2);
         assertThat(context.environmentCompliance()).isEqualTo(compliance);
         assertThat(context.notificationMetrics()).isEqualTo(metrics);
         assertThat(context.visionAnalysis()).isEqualTo(vision);
     }
 
     @Test
-    @DisplayName("생성자 유효성 검증 실패 케이스들 (null, 타임존 불일치, 권한 불일치)")
+    @DisplayName("생성자 기본 유효성 검증 실패 케이스들")
     void create_validationFailures() {
         Long cultivationId = 1L;
         LocalDate feedbackDate = LocalDate.of(2026, 9, 1);
@@ -119,8 +130,11 @@ class DailyFeedbackContextTest {
         List<DataGeneratorThresholdResponse> thresholds = List.of(createCurrentThreshold(cultivationId));
         List<SensorChannelStatistics> sensorStats = List.of(createSensorStat(cultivationId));
         DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
+        DailyEnvironmentCompliance mismatchedDateCompliance = createCompliance(cultivationId, LocalDate.of(2026, 9, 2));
         DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
+        DailyNotificationMetrics mismatchedDateMetrics = createMetrics(cultivationId, LocalDate.of(2026, 9, 2));
         DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
+        DailyVisionAnalysisSnapshot mismatchedVision = DailyVisionAnalysisSnapshot.withoutPhoto(999L);
 
         // 1. cultivationId null
         assertThatThrownBy(() -> new DailyFeedbackContext(
@@ -128,7 +142,7 @@ class DailyFeedbackContextTest {
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 2. UTC 오프셋 (Seoul +09:00 필수)
+        // 2. UTC 오프셋
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, utcSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
@@ -140,7 +154,7 @@ class DailyFeedbackContextTest {
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 4. OWNER 역할이 아닐 때
+        // 4. OWNER 역할 아님
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, managerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
@@ -150,6 +164,115 @@ class DailyFeedbackContextTest {
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, mismatchedMushroomDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 6. compliance date 불일치
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, mismatchedDateCompliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 7. metrics date 불일치
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, mismatchedDateMetrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 8. vision cultivationId 불일치
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, mismatchedVision
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("currentThresholds 및 sensorStatistics 정규화 예외 검증")
+    void normalization_validationFailures() {
+        Long cultivationId = 1L;
+        LocalDate feedbackDate = LocalDate.of(2026, 9, 1);
+        OffsetDateTime seoulSnapshotAt = OffsetDateTime.of(2026, 9, 1, 12, 0, 0, 0, SEOUL_OFFSET);
+        DailyCultivationDetailResponse ownerDetail = createDetail(cultivationId, 10L, "OWNER");
+        MushroomReferenceInfoResponse mushroomRef = createMushroomRef();
+        DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
+        DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
+        DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
+
+        // thresholds null 요소
+        List<DataGeneratorThresholdResponse> nullElemThresholds = Collections.singletonList(null);
+        List<SensorChannelStatistics> validStats = List.of(createSensorStat(cultivationId));
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                nullElemThresholds, validStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // thresholds 중복 키
+        DataGeneratorThresholdResponse dupTh1 = new DataGeneratorThresholdResponse(cultivationId, "TEMPERATURE", "°C", BigDecimal.valueOf(18), BigDecimal.valueOf(24));
+        DataGeneratorThresholdResponse dupTh2 = new DataGeneratorThresholdResponse(cultivationId, "TEMPERATURE", "°C", BigDecimal.valueOf(20), BigDecimal.valueOf(26));
+        List<DataGeneratorThresholdResponse> dupThresholds = List.of(dupTh1, dupTh2);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                dupThresholds, validStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // sensorStats null 요소
+        List<DataGeneratorThresholdResponse> validThresholds = List.of(createCurrentThreshold(cultivationId));
+        List<SensorChannelStatistics> nullElemStats = Collections.singletonList(null);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                validThresholds, nullElemStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // sensorStats 중복 키
+        SensorChannelKey dupKey = new SensorChannelKey(cultivationId, "EUI-01", "TEMPERATURE", "°C");
+        SensorChannelStatistics dupStat1 = new SensorChannelStatistics(dupKey, BigDecimal.valueOf(18), BigDecimal.valueOf(20), BigDecimal.valueOf(22), 96);
+        SensorChannelStatistics dupStat2 = new SensorChannelStatistics(dupKey, BigDecimal.valueOf(19), BigDecimal.valueOf(21), BigDecimal.valueOf(23), 96);
+        List<SensorChannelStatistics> dupStats = List.of(dupStat1, dupStat2);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                validThresholds, dupStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("mushroomReference 유효성 검증 예외 케이스들")
+    void mushroomReference_validationFailures() {
+        Long cultivationId = 1L;
+        LocalDate feedbackDate = LocalDate.of(2026, 9, 1);
+        OffsetDateTime seoulSnapshotAt = OffsetDateTime.of(2026, 9, 1, 12, 0, 0, 0, SEOUL_OFFSET);
+        DailyCultivationDetailResponse ownerDetail = createDetail(cultivationId, 10L, "OWNER");
+        List<DataGeneratorThresholdResponse> validThresholds = List.of(createCurrentThreshold(cultivationId));
+        List<SensorChannelStatistics> validStats = List.of(createSensorStat(cultivationId));
+        DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
+        DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
+        DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
+
+        // 1. thresholdInfoResponses null
+        MushroomReferenceInfoResponse nullThresholdsRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", "Pleurotus", null);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullThresholdsRef,
+                validThresholds, validStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 2. min > max 임계값
+        SensorTypeInfoResponse sensorType = new SensorTypeInfoResponse(100L, "TEMPERATURE", "°C");
+        MushroomReferenceThresholdInfoResponse invalidRangeThreshold = new MushroomReferenceThresholdInfoResponse(
+                1L, sensorType, "GROWTH", BigDecimal.valueOf(30.0), BigDecimal.valueOf(20.0)
+        );
+        MushroomReferenceInfoResponse invalidRangeRef = new MushroomReferenceInfoResponse(
+                10L, "느타리", "Oyster", "Pleurotus", List.of(invalidRangeThreshold)
+        );
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, invalidRangeRef,
+                validThresholds, validStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 3. 중복 thresholdId
+        MushroomReferenceThresholdInfoResponse th1 = new MushroomReferenceThresholdInfoResponse(1L, sensorType, "GROWTH", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
+        MushroomReferenceThresholdInfoResponse th2 = new MushroomReferenceThresholdInfoResponse(1L, sensorType, "HARVEST", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
+        MushroomReferenceInfoResponse dupIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", "Pleurotus", List.of(th1, th2));
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, dupIdRef,
+                validThresholds, validStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
     }
 }
