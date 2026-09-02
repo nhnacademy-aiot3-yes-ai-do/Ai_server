@@ -100,14 +100,7 @@ public class InsightService {
         }
 
         Integer growthScore = calculateGrowthScore(compliance);
-        if (growthScore != null) {
-            try {
-                client.updateProductScore(cultivationId, new ProductScoreUpdateRequest(BigDecimal.valueOf(growthScore)));
-                log.info("Cultivation_server에 수확 상품 점수 갱신 성공: cultivationId={}, score={}", cultivationId, growthScore);
-            } catch (Exception e) {
-                log.warn("Cultivation_server 상품 점수 갱신 실패 (cultivationId={}): {}", cultivationId, e.getMessage());
-            }
-        }
+        updateProductScoreWithRetry(client, cultivationId, growthScore);
 
         // [컴파일 에러 해결 및 더미값 제거] 실제 센서 평균값 추출 (없으면 null)
         BigDecimal avgTemp = findSensorAverage(sensorAverages, TEMPERATURE);
@@ -187,6 +180,8 @@ public class InsightService {
                             .param("totalEvents", dailyStats.totalEvents())
                             .param("thresholdAlerts", dailyStats.thresholdAlerts())
                             .param("actuatorSuccessCount", dailyStats.actuatorSuccessCount())
+                            .param("actuatorSuccessRate", dailyStats.actuatorSuccessRate())
+                            .param("stableDaysRate", dailyStats.stableDaysRate())
                             .param("diseaseStatusText", dailyStats.diseaseStatusText())
                             .param("stableDaysText", dailyStats.stableDaysText())
                             .param("dailyFeedbackSummary", dailyStats.dailySummaryExcerpt())
@@ -395,10 +390,10 @@ public class InsightService {
                     return new InsightDetailResponse.DailyRecordDto(
                             i + 1, // dayNumber (1일차, 2일차...)
                             df.getFeedbackDate().toString(),
-                            extractSensorAvgFromSnapshot(snapshot, TEMPERATURE, insight.getAvgTemperature()),
-                            extractSensorAvgFromSnapshot(snapshot, HUMIDITY, insight.getAvgHumidity()),
-                            extractSensorAvgFromSnapshot(snapshot, CO2, insight.getAvgCo2()),
-                            extractSensorAvgFromSnapshot(snapshot, LIGHT, insight.getAvgLight()),
+                            extractSensorAvgFromSnapshot(snapshot, TEMPERATURE, null),
+                            extractSensorAvgFromSnapshot(snapshot, HUMIDITY, null),
+                            extractSensorAvgFromSnapshot(snapshot, CO2, null),
+                            extractSensorAvgFromSnapshot(snapshot, LIGHT, null),
                             df.getContent()
                     );
                 })
@@ -441,7 +436,7 @@ public class InsightService {
     // 일일 피드백 종합 분석
     private DailyStatsSummary analyzeDailyFeedbacks(List<DailyFeedback> dailyFeedbacks) {
         if (dailyFeedbacks == null || dailyFeedbacks.isEmpty()) {
-            return new DailyStatsSummary("생육 모드로 안정 관리", 0, 0, 0, "병충해 없음(정상)", "전 기간 안정 유지", "일일 피드백 이력 없음");
+            return new DailyStatsSummary("생육 모드로 안정 관리", 0, 0, 0, 100, 100, "병충해 없음(정상)", "전 기간 안정 유지", "일일 피드백 이력 없음");
         }
 
         NotificationAccumulator accumulator = new NotificationAccumulator();
@@ -463,9 +458,16 @@ public class InsightService {
         String stableDays = String.format("총 %d일 중 %d일간 안정 유지",
                 dailyFeedbacks.size(), Math.max(1, dailyFeedbacks.size() - (accumulator.thresholdAlerts > 0 ? 1 : 0)));
 
+        int totalActuatorAttempts = accumulator.thresholdAlerts + accumulator.actuatorSuccess;
+        int actuatorSuccessRate = totalActuatorAttempts > 0 ? (accumulator.actuatorSuccess * 100) / totalActuatorAttempts : 100;
+
+        int stableDaysCount = Math.max(0, dailyFeedbacks.size() - (accumulator.thresholdAlerts > 0 ? 1 : 0));
+        int stableDaysRate = !dailyFeedbacks.isEmpty() ? (stableDaysCount * 100) / dailyFeedbacks.size() : 100;
+
         return new DailyStatsSummary(
                 modeSwitchInfo, accumulator.totalEvents, accumulator.thresholdAlerts,
-                accumulator.actuatorSuccess, diseaseStatus, stableDays, excerpts.toString()
+                accumulator.actuatorSuccess, actuatorSuccessRate, stableDaysRate,
+                diseaseStatus, stableDays, excerpts.toString()
         );
     }
 
@@ -523,6 +525,36 @@ public class InsightService {
                 this.totalEvents += nm.path("totalEvents").asInt(0);
                 this.thresholdAlerts += nm.path("ruleEngineCooldownThresholdEvents").asInt(0);
                 this.actuatorSuccess += nm.path("actuatorControlSuccessEvents").asInt(0);
+            }
+        }
+    }
+
+    // 점수 갱신 일시적 통신 장애 대비 최대 3회 재시도
+    private void updateProductScoreWithRetry(CultivationClient client, Long cultivationId, Integer growthScore) {
+        if (growthScore == null) return;
+
+        int maxAttempts = 3;
+        ProductScoreUpdateRequest request = new ProductScoreUpdateRequest(BigDecimal.valueOf(growthScore));
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                client.updateProductScore(cultivationId, request);
+                log.info("Cultivation_server에 수확 상품 점수 갱신 성공: cultivationId={}, score={}", cultivationId, growthScore);
+                return;
+            } catch (Exception e) {
+                if (attempt == maxAttempts) {
+                    log.error("Cultivation_server 상품 점수 갱신 최종 실패 (최대 {}회 재시도 초과, cultivationId={}): {}",
+                            maxAttempts, cultivationId, e.getMessage());
+                } else {
+                    log.warn("Cultivation_server 상품 점수 갱신 재시도 (시도 {}/{}, cultivationId={}): {}",
+                            attempt, maxAttempts, cultivationId, e.getMessage());
+                    try {
+                        Thread.sleep(100L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
             }
         }
     }

@@ -22,7 +22,7 @@ public class InsightController {
      */
     @GetMapping("/candidates")
     public ResponseEntity<ApiResponse<List<InsightCandidateResponse>>> getCandidates(
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestHeader("X-User-Id") Long userId,
             @RequestParam("mushroom-id") Long mushroomId,
             @RequestParam("temp") BigDecimal temp,
             @RequestParam("hum") BigDecimal hum,

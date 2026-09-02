@@ -5,6 +5,8 @@ public record DailyStatsSummary( // 집계 결과용 DTO(모드 전환일, 알�
         int totalEvents,              // 재배 기간 동안 발생한 전체 이벤트 총합
         int thresholdAlerts,          // 적정 임계값을 벗어난 경고 알림 발생 횟수
         int actuatorSuccessCount,     // 액추에이터 환경 제어 성공 횟수
+        int actuatorSuccessRate,      // 액추에이터 제어 성공률 (%)
+        int stableDaysRate,           // 안정 환경 유지 일수 비율 (%)
         String diseaseStatusText,     // Vision AI 사진 분석 기반 병충해 감지 여부
         String stableDaysText,        // 임계값 이탈 없이 환경이 안정 유지된 일수 요약
         String dailySummaryExcerpt    // 시작일/중간일/수확일 대표 일일 피드백 발췌본

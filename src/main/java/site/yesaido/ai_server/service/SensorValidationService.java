@@ -84,8 +84,9 @@ public class SensorValidationService {
         // 유저 입력값이 추천 범위를 벗어났는지 확인 (느슨한 검증)
         if (request.userMin().compareTo(optimalMin) < 0 || request.userMax().compareTo(optimalMax) > 0) {
             String mushroomName = findMushroomName(mushroomId);
-            isValid = false;
-            feedbackMessage = String.format("입력하신 값이 권장 범위를 벗어납니다. %s의 권장 범위는 %s ~ %s 입니다.", mushroomName, optimalMin, optimalMax);
+            isValid = false; // 권장 범위 이탈 플래그
+            feedbackMessage = String.format("[주의] 입력하신 값이 권장 범위를 벗어납니다. 버섯이 고사(사망)하거나 생육 장애가 발생할 수 있습니다! (%s의 권장 범위는 %s ~ %s 입니다.)",
+            mushroomName, optimalMin, optimalMax);
         }
         return new SensorValidationResponse(isValid, feedbackMessage, optimalMin, optimalMax);
     }

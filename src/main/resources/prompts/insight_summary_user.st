@@ -13,10 +13,10 @@
 
 [재배 기간 종합 제어 통계]
 - 총 알림 발생: {totalEvents}건
-- 임계값 이탈 알림: {thresholdAlerts}건
-- 액추에이터 자동 제어 성공: {actuatorSuccessCount}건
+- 임계값 이탈 알림 발생: {thresholdAlerts}건
+- 액추에이터 자동 제어 성공: {actuatorSuccessCount}건 (성공률: {actuatorSuccessRate}%)
 - 병충해 발생 여부: {diseaseStatusText}
-- 안정 환경 유지 일수: {stableDaysText}
+- 안정 환경 유지 일수: {stableDaysText} (유지율: {stableDaysRate}%)
 
 [재배 기간 중 주요 일일 피드백 경과]
 {dailyFeedbackSummary}
