@@ -39,7 +39,7 @@ class InsightControllerTest {
                 new BigDecimal("1200.0"), 95, "우수 관리로 다수확 달성", LocalDateTime.now()
         );
 
-        given(insightService.getInsightCandidates(eq(100L), eq(1L), any(), any(), any(), any()))
+        given(insightService.getInsightCandidatesByCultivation(eq(100L), any(), eq(1L), any(), any(), any(), any()))
                 .willReturn(List.of(candidate));
 
         mockMvc.perform(get("/api/v1/ai/insights/candidates")
@@ -49,6 +49,27 @@ class InsightControllerTest {
                         .param("hum", "80.0")
                         .param("co2", "800.0")
                         .param("light", "500.0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].insightId").value(1L))
+                .andExpect(jsonPath("$.data[0].cultivationId").value(10L));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/ai/insights/candidates - cultivationId로 조회 성공 시 200 OK")
+    void getCandidates_withCultivationId() throws Exception {
+        InsightCandidateResponse candidate = new InsightCandidateResponse(
+                1L, 10L, 1L,
+                new BigDecimal("23.5"), new BigDecimal("85.0"), new BigDecimal("900.0"), new BigDecimal("500.0"),
+                new BigDecimal("1200.0"), 95, "우수 관리로 다수확 달성", LocalDateTime.now()
+        );
+
+        given(insightService.getInsightCandidatesByCultivation(eq(100L), eq(27L), any(), any(), any(), any(), any()))
+                .willReturn(List.of(candidate));
+
+        mockMvc.perform(get("/api/v1/ai/insights/candidates")
+                        .header("X-User-Id", 100L)
+                        .param("cultivationId", "27"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].insightId").value(1L))
