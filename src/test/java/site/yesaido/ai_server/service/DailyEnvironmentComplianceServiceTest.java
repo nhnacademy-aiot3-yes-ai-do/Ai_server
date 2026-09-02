@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
+@SuppressWarnings("ConstantConditions")
 @ExtendWith(MockitoExtension.class)
 class DailyEnvironmentComplianceServiceTest {
 
@@ -42,6 +43,25 @@ class DailyEnvironmentComplianceServiceTest {
         assertThat(result.cultivationId()).isEqualTo(1L);
         assertThat(result.date()).isEqualTo(date);
         assertThat(result.temperatureCompliance()).isEqualTo(BigDecimal.valueOf(95.5));
+    }
+
+    @Test
+    @DisplayName("예외: 응답이 null이거나 유효하지 않은 유지율 범위일 때 IllegalStateException")
+    void fetch_invalidResponse() {
+        LocalDate date = LocalDate.of(2026, 9, 1);
+
+        // 1. null 응답
+        given(cultivationClient.getDailyEnvironmentCompliance(1L, date, 100L)).willReturn(null);
+        assertThatThrownBy(() -> service.fetch(1L, date, 100L))
+                .isInstanceOf(IllegalStateException.class);
+
+        // 2. 음수 유지율 (DailyEnvironmentCompliance 생성 시 IllegalArgumentException 발생 -> IllegalStateException으로 래핑)
+        EnvironmentComplianceResponse invalidRangeResponse = new EnvironmentComplianceResponse(
+                BigDecimal.valueOf(-10.0), BigDecimal.valueOf(88.0), BigDecimal.valueOf(90.0), BigDecimal.valueOf(100.0)
+        );
+        given(cultivationClient.getDailyEnvironmentCompliance(1L, date, 100L)).willReturn(invalidRangeResponse);
+        assertThatThrownBy(() -> service.fetch(1L, date, 100L))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

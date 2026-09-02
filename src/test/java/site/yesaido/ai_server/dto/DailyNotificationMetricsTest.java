@@ -16,44 +16,62 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DailyNotificationMetricsTest {
 
     @Test
-    @DisplayName("fromSuccessfulResponse 팩토리 메서드로 이벤트 파싱 검증")
+    @DisplayName("fromSuccessfulResponse 팩토리 메서드로 이벤트 파싱 및 기타 이벤트 무시 검증")
     void fromSuccessfulResponse_success() {
         LocalDate date = LocalDate.of(2026, 9, 1);
-        DailyNotificationSummaryResponse summary = createSampleSummary(date);
+        DailyNotificationEventCountResponse breach = new DailyNotificationEventCountResponse("ENVIRONMENT_THRESHOLD_BREACHED", "이탈", 2L);
+        DailyNotificationEventCountResponse success = new DailyNotificationEventCountResponse("ACTUATOR_CONTROL_SUCCEEDED", "성공", 3L);
+        DailyNotificationEventCountResponse failed = new DailyNotificationEventCountResponse("ACTUATOR_CONTROL_FAILED", "실패", 1L);
+        DailyNotificationEventCountResponse other = new DailyNotificationEventCountResponse("OTHER_EVENT_TYPE", "기타", 4L);
+
+        DailyNotificationSummaryResponse summary = new DailyNotificationSummaryResponse(
+                1L, date, 10L, List.of(breach, success, failed, other)
+        );
 
         DailyNotificationMetrics metrics = DailyNotificationMetrics.fromSuccessfulResponse(summary);
 
         assertThat(metrics.cultivationId()).isEqualTo(1L);
         assertThat(metrics.date()).isEqualTo(date);
-        // 💡 2 + 3 + 1 = 6건 검증
-        assertThat(metrics.totalNotificationCount()).isEqualTo(6L);
+        assertThat(metrics.totalNotificationCount()).isEqualTo(10L);
         assertThat(metrics.thresholdBreachAlertCount()).isEqualTo(2L);
         assertThat(metrics.actuatorControlSucceededCount()).isEqualTo(3L);
         assertThat(metrics.actuatorControlFailedCount()).isEqualTo(1L);
     }
 
     @Test
-    @DisplayName("세부 지표 합계가 totalCount보다 클 때 예외 검증")
-    void detailedCountGreaterThanTotal() {
+    @DisplayName("생성자 및 fromSuccessfulResponse 유효성 검증 실패 케이스들")
+    void validationFailures() {
         LocalDate date = LocalDate.of(2026, 9, 1);
+        Long nullCultivationId = null;
+        LocalDate nullDate = null;
+        DailyNotificationSummaryResponse nullResponse = null;
+
+        // 1. response null
+        assertThatThrownBy(() -> DailyNotificationMetrics.fromSuccessfulResponse(nullResponse))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 2. cultivationId <= 0 / null
+        assertThatThrownBy(() -> new DailyNotificationMetrics(nullCultivationId, date, 5L, 1L, 1L, 1L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyNotificationMetrics(0L, date, 5L, 1L, 1L, 1L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 3. date null
+        assertThatThrownBy(() -> new DailyNotificationMetrics(1L, nullDate, 5L, 1L, 1L, 1L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 4. 음수 count들
+        assertThatThrownBy(() -> new DailyNotificationMetrics(1L, date, -1L, 0L, 0L, 0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyNotificationMetrics(1L, date, 5L, -1L, 0L, 0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyNotificationMetrics(1L, date, 5L, 0L, -1L, 0L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyNotificationMetrics(1L, date, 5L, 0L, 0L, -1L))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 5. 세부 지표 합계가 totalCount보다 클 때
         assertThatThrownBy(() -> new DailyNotificationMetrics(1L, date, 5L, 3L, 3L, 0L))
                 .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    // 개별 카운트(2 + 3 + 1 = 6L)와 totalCount(6L)를 일치시킨 헬퍼 메서드
-    private DailyNotificationSummaryResponse createSampleSummary(LocalDate date) {
-        DailyNotificationEventCountResponse breach = new DailyNotificationEventCountResponse(
-                "ENVIRONMENT_THRESHOLD_BREACHED", "임계값 이탈", 2L
-        );
-        DailyNotificationEventCountResponse success = new DailyNotificationEventCountResponse(
-                "ACTUATOR_CONTROL_SUCCEEDED", "제어 성공", 3L
-        );
-        DailyNotificationEventCountResponse failed = new DailyNotificationEventCountResponse(
-                "ACTUATOR_CONTROL_FAILED", "제어 실패", 1L
-        );
-
-        return new DailyNotificationSummaryResponse(
-                1L, date, 6L, List.of(breach, success, failed)
-        );
     }
 }

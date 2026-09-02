@@ -19,8 +19,10 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
+@SuppressWarnings("ConstantConditions")
 @ExtendWith(MockitoExtension.class)
 class DailyNotificationMetricsServiceTest {
 
@@ -57,6 +59,40 @@ class DailyNotificationMetricsServiceTest {
     }
 
     @Test
+    @DisplayName("예외: 응답 계약 위반 (null 응답, 날짜 불일치, 중복 경작지, ID 불일치)")
+    void fetchDailyMetrics_responseViolations() {
+        LocalDate date = LocalDate.of(2026, 9, 1);
+        List<Long> ids = List.of(1L);
+
+        // 1. null 응답
+        given(notificationClient.getDailySummaries(any())).willReturn(null);
+        assertThatThrownBy(() -> service.fetchDailyMetrics(date, ids))
+                .isInstanceOf(IllegalStateException.class);
+
+        // 2. 날짜 불일치
+        DailyNotificationSummaryResponse summaryOtherDate = new DailyNotificationSummaryResponse(
+                1L, LocalDate.of(2026, 9, 2), 0L, List.of()
+        );
+        DailyNotificationSummariesResponse mismatchedDateResponse = new DailyNotificationSummariesResponse(
+                LocalDate.of(2026, 9, 2), "Asia/Seoul", List.of(summaryOtherDate)
+        );
+        given(notificationClient.getDailySummaries(any())).willReturn(mismatchedDateResponse);
+        assertThatThrownBy(() -> service.fetchDailyMetrics(date, ids))
+                .isInstanceOf(IllegalStateException.class);
+
+        // 3. 경작지 ID 불일치 (2L 응답 수신)
+        DailyNotificationSummaryResponse wrongIdSummary = new DailyNotificationSummaryResponse(
+                2L, date, 0L, List.of()
+        );
+        DailyNotificationSummariesResponse wrongIdResponse = new DailyNotificationSummariesResponse(
+                date, "Asia/Seoul", List.of(wrongIdSummary)
+        );
+        given(notificationClient.getDailySummaries(any())).willReturn(wrongIdResponse);
+        assertThatThrownBy(() -> service.fetchDailyMetrics(date, ids))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     @DisplayName("예외: date 또는 cultivationIds가 null일 때")
     void fetchDailyMetrics_nullParams() {
         List<Long> ids = List.of(1L);
@@ -69,7 +105,6 @@ class DailyNotificationMetricsServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    // 응답 생성 로직을 헬퍼 메서드로 깔끔하게 분리
     private DailyNotificationSummariesResponse createSampleSummariesResponse(LocalDate date) {
         DailyNotificationEventCountResponse event1 =
                 new DailyNotificationEventCountResponse("ACTUATOR_CONTROL_SUCCEEDED", "액추에이터 성공", 4L);

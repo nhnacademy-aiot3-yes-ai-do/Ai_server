@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@SuppressWarnings("ConstantConditions")
 class SensorChannelStatisticsTest {
 
     private final SensorChannelKey channelKey = new SensorChannelKey(1L, "EUI-01", "TEMPERATURE", "°C");
@@ -44,19 +45,42 @@ class SensorChannelStatisticsTest {
     }
 
     @Test
-    @SuppressWarnings("ConstantConditions")
-    @DisplayName("유효성 검증 실패: 최소 > 평균 또는 null 불일치 시 예외")
-    void create_invalid() {
-        // 집계점이 있는데 null인 경우
-        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, null, null, null, 5))
+    @DisplayName("유효성 검증 실패 분기들 전수 검증")
+    void create_validationFailures() {
+        SensorChannelKey nullKey = null;
+        BigDecimal val = new BigDecimal("20.0");
+        BigDecimal min = new BigDecimal("10.0");
+        BigDecimal avg = new BigDecimal("20.0");
+        BigDecimal max = new BigDecimal("30.0");
+
+        // 1. channelKey null
+        assertThatThrownBy(() -> new SensorChannelStatistics(nullKey, min, avg, max, 1))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        BigDecimal min = new BigDecimal("30.0");
-        BigDecimal avg = new BigDecimal("20.0");
-        BigDecimal max = new BigDecimal("25.0");
+        // 2. aggregationPointCount 음수
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, min, avg, max, -1))
+                .isInstanceOf(IllegalArgumentException.class);
 
-        // 최소값이 평균값보다 큰 경우
-        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, min, avg, max, 5))
+        // 3. 0포인트인데 값이 존재하는 경우
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, val, null, null, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, null, val, null, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, null, null, val, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 4. 포인트가 있는데 일부 값이 null인 경우
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, null, avg, max, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, min, null, max, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, min, avg, null, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // 5. 정렬 순서 위반 (min > avg 또는 avg > max)
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, max, avg, min, 5))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SensorChannelStatistics(channelKey, min, max, avg, 5))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }
