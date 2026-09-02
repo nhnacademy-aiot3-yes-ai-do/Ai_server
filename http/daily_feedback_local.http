@@ -1,154 +1,161 @@
-# AI 일일 피드백 로컬 통합 테스트
+# AI 일일 피드백 - Cultivation 등록 사진 통합 테스트
 #
-# 실행 전 http/LOCAL_DAILY_FEEDBACK_TEST.md를 먼저 읽어 주세요.
-# feedbackDate는 반드시 사진을 업로드하는 현재 한국 날짜로 바꿉니다.
-# 같은 cultivationId + feedbackDate에는 사진을 정확히 한 장만 업로드합니다.
+# Cultivation에 이미 등록된 사진을 다음 실제 흐름으로 검증합니다.
+#
+# Cultivation 일별 사진 조회 및 Presigned URL 발급
+# -> AI가 이미지 다운로드
+# -> Vision Server 분석
+# -> growth_record 저장
+# -> 일일 피드백 생성 및 daily_feedback 저장
+#
+# 실행 전 조건
+# 1. AI Server를 반드시 local 프로필로 실행합니다.
+#    ./mvnw -Dspring-boot.run.profiles=local spring-boot:run
+# 2. feedbackDate와 cultivationId를 실제 사진이 등록된 값으로 맞춥니다.
+# 3. 대상 날짜와 재배지에는 사진이 정확히 한 장 있어야 합니다.
+# 4. 이번 실행의 실제 Vision 호출까지 증명하려면 해당 photoId의
+#    growth_record가 실행 전에 없어야 합니다. 기존 행이 있으면 AI가 재사용합니다.
+# 5. Cultivation의 일별 사진 응답에는 만료되는 Presigned URL이 포함됩니다.
+#    해당 응답이나 URL을 외부에 공유하거나 로그로 복사하지 마세요.
+# 6. 요청은 1번부터 순서대로 실행합니다. 9번은 선택 검증입니다.
+#
+# 참고: 현재 local 수동 실행 API는 DB 저장까지 검증하며,
+# DailyFeedback 완료 RabbitMQ 이벤트 발행은 아직 수행하지 않습니다.
 
-@ai = http://localhost:8080
-@vision = http://localhost:8000
-@cultivation = http://localhost:8084
+@ai = http://localhost:9003
+@vision = http://localhost:9004
+@cultivation = http://localhost:9001
 @notification = http://localhost:9005
 @cultivationId = 28
-@ownerUserId = 22
 @feedbackDate = 2026-09-02
 
-### 1. Vision Server 생존 상태 확인
+### 1. AI local 전용 수동 실행 Controller 등록 확인
+# 실제 배치를 실행하지 않도록 일부러 잘못된 날짜 형식을 보냅니다.
+# HTTP 400은 /run 경로가 정상 등록되어 날짜 검증까지 도달했다는 뜻입니다.
+# HTTP 404면 AI Server가 local 프로필로 실행되지 않은 것입니다.
+POST {{ai}}/api/test/daily-feedbacks/run?date=invalid-date
+Accept: application/json
+
+> {%
+client.test("AI local 수동 실행 Controller가 등록되어 있다", function () {
+    client.assert(response.status === 400,
+        "HTTP 400이어야 합니다. 404라면 AI Server를 local 프로필로 다시 실행하세요.");
+});
+%}
+
+### 2. Vision Server 생존 상태 확인
 GET {{vision}}/health/live
 Accept: application/json
 
 > {%
 client.test("Vision Server가 실행 중이다", function () {
-    client.assert(response.status === 200, "Vision live 응답은 HTTP 200이어야 합니다.");
+    client.assert(response.status === 200,
+        "Vision live 응답은 HTTP 200이어야 합니다.");
 });
 %}
 
-### 2. Vision Server 모델 준비 상태 확인
+### 3. Vision Server 모델 준비 상태 확인
 GET {{vision}}/health/ready
 Accept: application/json
 
 > {%
 client.test("Vision 모델이 요청 가능한 상태이다", function () {
-    client.assert(response.status === 200, "Vision ready 응답은 HTTP 200이어야 합니다.");
+    client.assert(response.status === 200,
+        "Vision ready 응답은 HTTP 200이어야 합니다.");
 });
 %}
 
-### 3. Notification Server 준비 상태 확인
-GET {{notification}}/actuator/health
+### 4. Notification 일일 통계 계약 확인
+# AI 배치가 실제로 호출하는 API를 직접 확인합니다.
+# eventCounts에 없는 이벤트 유형은 AI에서 0으로 처리합니다.
+POST {{notification}}/api/v1/internal/notifications/daily-summaries
+Content-Type: application/json
 Accept: application/json
 
-> {%
-client.test("Notification 통계 API를 호출할 수 있는 상태이다", function () {
-    client.assert(response.status === 200, "Notification health 응답은 HTTP 200이어야 합니다.");
-    client.assert(response.body.status === "UP", "Notification Server 상태가 UP이어야 합니다.");
-});
-%}
-
-### 4. AI -> Vision multipart 호출만 먼저 확인
-POST {{ai}}/api/test/vision
-Content-Type: multipart/form-data; boundary=DailyFeedbackBoundary
-
---DailyFeedbackBoundary
-Content-Disposition: form-data; name="image"; filename="mushroom.jpg"
-Content-Type: image/jpeg
-
-< ./local-test-images/mushroom.jpg
---DailyFeedbackBoundary--
+{
+  "date": "{{feedbackDate}}",
+  "cultivationIds": [{{cultivationId}}]
+}
 
 > {%
-client.test("AI가 Vision 응답 계약을 그대로 수신한다", function () {
-    client.assert(response.status === 200, "AI Vision relay 응답은 HTTP 200이어야 합니다.");
-    client.assert(response.body.analysisType === "MUSHROOM_HEALTH_CHECK_V1",
-        "analysisType이 MUSHROOM_HEALTH_CHECK_V1이어야 합니다.");
-    client.assert(response.body.status === "SUCCESS"
-        || response.body.status === "NO_MUSHROOM_DETECTED",
-        "Vision status는 SUCCESS 또는 NO_MUSHROOM_DETECTED여야 합니다.");
-    client.assert(Array.isArray(response.body.results), "results는 배열이어야 합니다.");
-    client.assert(Array.isArray(response.body.warnings), "warnings는 배열이어야 합니다.");
-});
-%}
-
-### 5. 업로드 전 해당 날짜/재배지의 피드백이 아직 없는지 확인
-# 404가 정상입니다. 200이면 이미 저장된 피드백이 있으므로 이 날짜에는 사진 통합 테스트를 시작하지 않습니다.
-GET {{ai}}/api/test/daily-feedbacks/{{cultivationId}}?date={{feedbackDate}}
-Accept: application/json
-
-> {%
-client.test("테스트 대상에는 아직 저장된 일일 피드백이 없다", function () {
-    client.assert(response.status === 404,
-        "사진 업로드 전 조회는 HTTP 404여야 합니다. 200이면 다른 재배지·날짜 조합을 선택하세요.");
-});
-%}
-
-### 6. 업로드 전 해당 날짜의 사진 계약 전체 확인
-# 이 요청 응답에는 만료되는 presignedUrl이 포함됩니다. 응답을 공유하거나 로그로 복사하지 마세요.
-GET {{cultivation}}/api/v1/internal/cultivations/photos/daily?date={{feedbackDate}}
-Accept: application/json
-
-> {%
-client.test("테스트 대상에는 아직 오늘 사진이 없다", function () {
-    client.assert(response.status === 200, "일별 사진 조회는 HTTP 200이어야 합니다.");
-    client.assert(response.body.targetDate === client.variables.file.get("feedbackDate"),
-        "응답 날짜가 feedbackDate와 같아야 합니다.");
-    client.assert(Array.isArray(response.body.photos), "photos는 배열이어야 합니다.");
-
-    const photoCountsByCultivation = {};
-    response.body.photos.forEach(function (photo) {
-        const key = String(photo.cultivationId);
-        photoCountsByCultivation[key] = (photoCountsByCultivation[key] || 0) + 1;
-    });
-    const duplicateCultivationIds = Object.keys(photoCountsByCultivation).filter(function (key) {
-        return photoCountsByCultivation[key] > 1;
-    });
-    client.assert(duplicateCultivationIds.length === 0,
-        "다른 재배지를 포함해 같은 날짜에 사진이 두 장 이상인 재배지가 없어야 합니다.");
+client.test("Notification 일일 통계 계약이 정상이다", function () {
+    client.assert(response.status === 200,
+        "Notification 일일 통계 응답은 HTTP 200이어야 합니다.");
+    client.assert(response.body.date === client.variables.file.get("feedbackDate"),
+        "Notification 통계 날짜가 feedbackDate와 같아야 합니다.");
+    client.assert(response.body.zoneId === "Asia/Seoul",
+        "Notification 통계 기준 시간대는 Asia/Seoul이어야 합니다.");
+    client.assert(Array.isArray(response.body.summaries),
+        "summaries는 배열이어야 합니다.");
 
     const targetCultivationId = Number(client.variables.file.get("cultivationId"));
-    const matchingPhotos = response.body.photos.filter(function (photo) {
-        return Number(photo.cultivationId) === targetCultivationId;
+    const matchingSummaries = response.body.summaries.filter(function (summary) {
+        return Number(summary.cultivationId) === targetCultivationId;
     });
 
-    client.assert(matchingPhotos.length === 0,
-        "이미 같은 날짜의 사진이 있습니다. 중복 업로드하지 말고 안내서의 충돌 해결 절차를 확인하세요.");
+    client.assert(matchingSummaries.length === 1,
+        "대상 재배지의 Notification 통계가 정확히 한 건이어야 합니다.");
+
+    const summary = matchingSummaries[0];
+    client.assert(summary.date === client.variables.file.get("feedbackDate"),
+        "재배지별 통계 날짜가 feedbackDate와 같아야 합니다.");
+    client.assert(Number(summary.totalCount) >= 0,
+        "totalCount는 0 이상의 숫자여야 합니다.");
+    client.assert(Array.isArray(summary.eventCounts),
+        "eventCounts는 배열이어야 합니다.");
+
+    summary.eventCounts.forEach(function (eventCount) {
+        client.assert(typeof eventCount.eventTypeCode === "string"
+            && eventCount.eventTypeCode.length > 0,
+            "각 이벤트 통계에는 eventTypeCode가 있어야 합니다.");
+        client.assert(Number(eventCount.count) >= 0,
+            "각 이벤트 count는 0 이상이어야 합니다.");
+    });
 });
 %}
 
-### 7. Cultivation Server에 테스트 사진 한 장 업로드
+### 5. 대상 날짜의 사진과 Presigned URL 계약 확인
+# 사진은 이미 Cultivation에 등록되어 있어야 합니다.
+# 이 파일은 사진 업로드·수정·삭제를 수행하지 않습니다.
 < {%
-client.global.clear("uploadedDailyFeedbackPhotoId");
+client.global.clear("cultivationDailyPhotoId");
 %}
-POST {{cultivation}}/api/v1/cultivations/{{cultivationId}}/photos
-X-User-Id: {{ownerUserId}}
-Content-Type: multipart/form-data; boundary=DailyFeedbackBoundary
-
---DailyFeedbackBoundary
-Content-Disposition: form-data; name="file"; filename="mushroom.jpg"
-Content-Type: image/jpeg
-
-< ./local-test-images/mushroom.jpg
---DailyFeedbackBoundary--
-
-> {%
-client.test("Cultivation 사진 업로드가 성공한다", function () {
-    client.assert(response.status === 201, "사진 업로드는 HTTP 201이어야 합니다.");
-    client.assert(Number(response.body.photoId) > 0, "photoId는 양수여야 합니다.");
-    client.assert(response.body.storageType !== null && response.body.storageType !== undefined,
-        "storageType이 있어야 합니다.");
-    client.assert(response.body.updatedAt !== null && response.body.updatedAt !== undefined,
-        "updatedAt이 있어야 합니다.");
-
-    // URL이나 objectKey는 저장하지 않고 이후 교차 검증에 필요한 ID만 보관합니다.
-    client.global.set("uploadedDailyFeedbackPhotoId", String(response.body.photoId));
-});
-%}
-
-### 8. 일별 사진 계약에서 방금 올린 사진이 정확히 한 장 조회되는지 확인
-# 응답의 presignedUrl은 30분 만료값이므로 외부에 공유하지 마세요.
 GET {{cultivation}}/api/v1/internal/cultivations/photos/daily?date={{feedbackDate}}
 Accept: application/json
 
 > {%
-client.test("일별 사진 조회가 업로드한 사진 한 장을 반환한다", function () {
-    client.assert(response.status === 200, "일별 사진 조회는 HTTP 200이어야 합니다.");
+client.test("Cultivation이 등록된 사진 한 장과 Presigned URL을 반환한다", function () {
+    client.assert(response.status === 200,
+        "Cultivation 일별 사진 조회는 HTTP 200이어야 합니다.");
+    client.assert(response.body.targetDate === client.variables.file.get("feedbackDate"),
+        "사진 응답 날짜가 feedbackDate와 같아야 합니다.");
+    client.assert(Array.isArray(response.body.photos),
+        "photos는 배열이어야 합니다.");
+
+    const photoCountsByCultivation = {};
+    const photoIdCounts = {};
+
+    response.body.photos.forEach(function (photo) {
+        const cultivationKey = String(photo.cultivationId);
+        const photoKey = String(photo.photoId);
+        photoCountsByCultivation[cultivationKey] =
+            (photoCountsByCultivation[cultivationKey] || 0) + 1;
+        photoIdCounts[photoKey] = (photoIdCounts[photoKey] || 0) + 1;
+    });
+
+    const duplicateCultivationIds = Object.keys(photoCountsByCultivation)
+        .filter(function (key) {
+            return photoCountsByCultivation[key] > 1;
+        });
+    const duplicatePhotoIds = Object.keys(photoIdCounts)
+        .filter(function (key) {
+            return photoIdCounts[key] > 1;
+        });
+
+    client.assert(duplicateCultivationIds.length === 0,
+        "같은 날짜에 사진이 두 장 이상인 재배지가 있으면 AI 배치가 거부합니다.");
+    client.assert(duplicatePhotoIds.length === 0,
+        "일별 사진 응답에 같은 photoId가 중복되면 안 됩니다.");
 
     const targetCultivationId = Number(client.variables.file.get("cultivationId"));
     const matchingPhotos = response.body.photos.filter(function (photo) {
@@ -156,39 +163,69 @@ client.test("일별 사진 조회가 업로드한 사진 한 장을 반환한다
     });
 
     client.assert(matchingPhotos.length === 1,
-        "대상 날짜와 재배지에는 사진이 정확히 한 장이어야 합니다.");
+        "대상 날짜와 재배지에 이미 등록된 사진이 정확히 한 장이어야 합니다.");
 
-    const uploadedPhotoId = client.global.get("uploadedDailyFeedbackPhotoId");
-    client.assert(uploadedPhotoId !== null && uploadedPhotoId !== undefined,
-        "7번 사진 업로드 요청을 먼저 성공시켜야 합니다.");
-    client.assert(Number(matchingPhotos[0].photoId) === Number(uploadedPhotoId),
-        "일별 조회 photoId가 방금 업로드한 photoId와 같아야 합니다.");
-
-    client.assert(typeof matchingPhotos[0].presignedUrl === "string"
-        && matchingPhotos[0].presignedUrl.length > 0,
+    const photo = matchingPhotos[0];
+    client.assert(Number(photo.photoId) > 0,
+        "photoId는 양수여야 합니다.");
+    client.assert(typeof photo.presignedUrl === "string"
+        && photo.presignedUrl.trim().length > 0,
         "presignedUrl이 있어야 합니다.");
-    client.assert(matchingPhotos[0].expiresAt !== null
-        && matchingPhotos[0].expiresAt !== undefined,
-        "expiresAt이 있어야 합니다.");
+    client.assert(typeof photo.expiresAt === "string"
+        && !Number.isNaN(Date.parse(photo.expiresAt)),
+        "expiresAt은 유효한 ISO-8601 시각이어야 합니다.");
+    client.assert(Date.parse(photo.expiresAt) > Date.now(),
+        "Presigned URL이 이미 만료되었습니다. 사진 목록을 다시 요청하세요.");
+
+    // 민감한 URL은 저장하지 않고 이후 교차 검증에 필요한 photoId만 보관합니다.
+    client.global.set("cultivationDailyPhotoId", String(photo.photoId));
 });
 %}
 
-### 9. 해당 날짜의 일일 피드백 배치 수동 실행
-# 배치는 모든 활성 재배지를 처리합니다. 다른 재배지 실패가 있어도 아래 검증은 28번 결과를 별도로 확인합니다.
+
+
+### 이번 실행에서 새 Vision 호출까지 확인하려면 5번 응답의 photoId를 사용해
+# DB Console에서 아래 조회 결과가 0건인지 확인한 뒤 7번을 실행하세요.
+# 기존 행이 있으면 VisionRelayService의 멱등 처리로 해당 분석을 재사용합니다.
+#
+# SELECT id
+# FROM ai.growth_record
+# WHERE cultivation_photo_id = <5번 응답의 photoId>;
+
+### 6. 생성 전 daily_feedback이 없는지 확인
+# 첫 통합 테스트에서는 404가 정상입니다.
+# 200이면 같은 cultivationId + feedbackDate의 피드백이 이미 저장된 상태입니다.
+GET {{ai}}/api/test/daily-feedbacks/{{cultivationId}}?date={{feedbackDate}}
+Accept: application/json
+
+> {%
+client.test("테스트 대상에는 아직 저장된 일일 피드백이 없다", function () {
+    client.assert(response.status === 404,
+        "첫 생성 전 조회는 HTTP 404여야 합니다. 200이면 다른 날짜를 선택하거나 9번 재실행 검증만 사용하세요.");
+});
+%}
+
+### 7. 해당 날짜의 일일 피드백 배치 수동 실행
+# 모든 활성 재배지를 처리하므로 대상 재배지가 현재 Data Generator Snapshot에도 있어야 합니다.
+# 이 요청 안에서 AI가 Cultivation의 Presigned URL로 이미지를 내려받아 Vision을 호출합니다.
 POST {{ai}}/api/test/daily-feedbacks/run?date={{feedbackDate}}
 Accept: application/json
 
 > {%
-client.test("테스트 재배지의 일일 피드백이 처음 생성된다", function () {
-    client.assert(response.status === 200, "일일 피드백 배치는 HTTP 200이어야 합니다.");
-    client.assert(response.body.success === true, "공통 응답 success가 true여야 합니다.");
+client.test("대상 재배지의 일일 피드백이 생성된다", function () {
+    client.assert(response.status === 200,
+        "일일 피드백 배치는 HTTP 200이어야 합니다.");
+    client.assert(response.body.success === true,
+        "공통 응답 success가 true여야 합니다.");
 
     const data = response.body.data;
     client.assert(data.feedbackDate === client.variables.file.get("feedbackDate"),
         "배치 결과 날짜가 feedbackDate와 같아야 합니다.");
-    client.assert(data.targetCount === data.createdCount + data.existingCount + data.failedCount,
+    client.assert(data.targetCount ===
+        data.createdCount + data.existingCount + data.failedCount,
         "상태별 합계가 targetCount와 같아야 합니다.");
-    client.assert(Array.isArray(data.results) && data.results.length === data.targetCount,
+    client.assert(Array.isArray(data.results)
+        && data.results.length === data.targetCount,
         "results 크기가 targetCount와 같아야 합니다.");
 
     const targetCultivationId = Number(client.variables.file.get("cultivationId"));
@@ -196,31 +233,37 @@ client.test("테스트 재배지의 일일 피드백이 처음 생성된다", fu
         return Number(result.cultivationId) === targetCultivationId;
     });
 
-    client.assert(targetResult !== undefined, "테스트 재배지가 배치 대상에 포함되어야 합니다.");
+    client.assert(targetResult !== undefined,
+        "대상 재배지가 배치 대상에 없습니다. Data Generator Snapshot의 활성 센서를 확인하세요.");
     client.assert(targetResult.status === "CREATED",
-        "첫 사진 통합 테스트는 CREATED여야 합니다. EXISTING이면 사진 업로드 전에 피드백 행이 이미 존재한 것입니다.");
+        "첫 실행 결과는 CREATED여야 합니다. FAILED이면 AI 로그의 해당 재배지 실패 단계를 확인하세요.");
 });
 %}
 
-### 10. DB에 저장된 피드백과 Vision 근거를 API로 조회
-# 이 API는 local 프로필에서만 열리며 DB에서 조회한 저장 결과를 반환합니다.
+### 8. DB에 저장된 피드백과 Vision 근거 조회
+# growthRecordId와 5번 photoId가 일치하면 다음 흐름이 모두 성공한 것입니다.
+# Presigned URL 다운로드 -> Vision 분석 -> growth_record 저장 -> daily_feedback 저장
 GET {{ai}}/api/test/daily-feedbacks/{{cultivationId}}?date={{feedbackDate}}
 Accept: application/json
 
 > {%
-client.test("저장된 피드백이 Vision 분석을 포함한다", function () {
-    client.assert(response.status === 200, "저장 결과 조회는 HTTP 200이어야 합니다.");
-    client.assert(response.body.success === true, "공통 응답 success가 true여야 합니다.");
+client.test("저장된 피드백이 등록 사진의 Vision 분석을 포함한다", function () {
+    client.assert(response.status === 200,
+        "저장 결과 조회는 HTTP 200이어야 합니다.");
+    client.assert(response.body.success === true,
+        "공통 응답 success가 true여야 합니다.");
 
     const data = response.body.data;
     const targetCultivationId = Number(client.variables.file.get("cultivationId"));
-    client.assert(Number(data.id) > 0, "저장된 daily_feedback id는 양수여야 합니다.");
+
+    client.assert(Number(data.id) > 0,
+        "저장된 daily_feedback id는 양수여야 합니다.");
     client.assert(Number(data.cultivationId) === targetCultivationId,
         "저장된 cultivationId가 테스트 대상과 같아야 합니다.");
     client.assert(data.feedbackDate === client.variables.file.get("feedbackDate"),
         "저장된 feedbackDate가 테스트 날짜와 같아야 합니다.");
     client.assert(data.hasVisionAnalysis === true,
-        "사진을 올린 실행에서는 hasVisionAnalysis가 true여야 합니다.");
+        "등록 사진을 분석한 피드백은 hasVisionAnalysis가 true여야 합니다.");
     client.assert(typeof data.contextSnapshot === "object"
         && data.contextSnapshot !== null
         && !Array.isArray(data.contextSnapshot),
@@ -239,11 +282,14 @@ client.test("저장된 피드백이 Vision 분석을 포함한다", function () 
         "visionAnalysis"
     ].sort();
     const actualContextKeys = Object.keys(data.contextSnapshot).sort();
-    client.assert(JSON.stringify(actualContextKeys) === JSON.stringify(expectedContextKeys),
+
+    client.assert(JSON.stringify(actualContextKeys) ===
+        JSON.stringify(expectedContextKeys),
         "contextSnapshot은 합의한 열 개의 도메인 필드만 가져야 합니다.");
     client.assert(Number(data.contextSnapshot.cultivationId) === targetCultivationId,
         "contextSnapshot.cultivationId가 테스트 대상과 같아야 합니다.");
-    client.assert(data.contextSnapshot.feedbackDate === client.variables.file.get("feedbackDate"),
+    client.assert(data.contextSnapshot.feedbackDate ===
+        client.variables.file.get("feedbackDate"),
         "contextSnapshot.feedbackDate가 테스트 날짜와 같아야 합니다.");
 
     const expectedHeadings = [
@@ -264,18 +310,24 @@ client.test("저장된 피드백이 Vision 분석을 포함한다", function () 
         return false;
     });
 
-    client.assert(JSON.stringify(actualHeadings) === JSON.stringify(expectedHeadings),
+    client.assert(JSON.stringify(actualHeadings) ===
+        JSON.stringify(expectedHeadings),
         "피드백의 다섯 Markdown 제목과 순서가 계약과 같아야 합니다.");
     headingIndexes.forEach(function (headingIndex, sectionIndex) {
         const bodyEnd = sectionIndex + 1 < headingIndexes.length
             ? headingIndexes[sectionIndex + 1]
             : contentLines.length;
-        const hasBody = contentLines.slice(headingIndex + 1, bodyEnd).some(function (line) {
-            return line.trim().length > 0;
-        });
-        client.assert(hasBody, "모든 피드백 섹션에는 비어 있지 않은 본문이 있어야 합니다.");
+        const hasBody = contentLines
+            .slice(headingIndex + 1, bodyEnd)
+            .some(function (line) {
+                return line.trim().length > 0;
+            });
+        client.assert(hasBody,
+            "모든 피드백 섹션에는 비어 있지 않은 본문이 있어야 합니다.");
     });
-    client.assert(data.content.indexOf("```") === -1 && data.content.indexOf("~~~") === -1,
+
+    client.assert(data.content.indexOf("```") === -1
+        && data.content.indexOf("~~~") === -1,
         "피드백에 코드 펜스가 없어야 합니다.");
     client.assert(!/(?:https?|s3):\/\/|x-amz-|x-goog-/i.test(data.content),
         "피드백에 외부 URL이나 서명 정보가 없어야 합니다.");
@@ -292,13 +344,16 @@ client.test("저장된 피드백이 Vision 분석을 포함한다", function () 
     client.assert(Number(vision.cultivationPhotoId) > 0,
         "Vision 분석에 cultivationPhotoId가 있어야 합니다.");
 
-    const uploadedPhotoId = client.global.get("uploadedDailyFeedbackPhotoId");
-    client.assert(uploadedPhotoId !== null && uploadedPhotoId !== undefined,
-        "7번 사진 업로드 요청을 먼저 성공시켜야 합니다.");
-    client.assert(Number(vision.cultivationPhotoId) === Number(uploadedPhotoId),
-        "저장된 Vision 분석이 방금 업로드한 사진을 가리켜야 합니다.");
+    const cultivationPhotoId = client.global.get("cultivationDailyPhotoId");
+    client.assert(cultivationPhotoId !== null
+        && cultivationPhotoId !== undefined,
+        "5번 Cultivation 일별 사진 조회를 먼저 성공시켜야 합니다.");
+    client.assert(Number(vision.cultivationPhotoId) ===
+        Number(cultivationPhotoId),
+        "저장된 Vision 분석이 Cultivation에 등록된 사진을 가리켜야 합니다.");
 
-    client.assert(typeof vision.analysisData === "object" && vision.analysisData !== null,
+    client.assert(typeof vision.analysisData === "object"
+        && vision.analysisData !== null,
         "Vision 원본 분석 데이터가 JSON object로 저장되어야 합니다.");
     client.assert(vision.analysisData.status === "SUCCESS"
         || vision.analysisData.status === "NO_MUSHROOM_DETECTED",
@@ -306,20 +361,24 @@ client.test("저장된 피드백이 Vision 분석을 포함한다", function () 
 });
 %}
 
-### 11. 선택: 같은 배치를 다시 실행해 중복 저장 방지 확인
+### 9. 선택: 같은 배치를 다시 실행해 중복 저장 방지 확인
 POST {{ai}}/api/test/daily-feedbacks/run?date={{feedbackDate}}
 Accept: application/json
 
 > {%
 client.test("같은 재배지와 날짜의 재실행은 EXISTING을 반환한다", function () {
-    client.assert(response.status === 200, "재실행도 HTTP 200이어야 합니다.");
+    client.assert(response.status === 200,
+        "재실행도 HTTP 200이어야 합니다.");
+    client.assert(response.body.success === true,
+        "재실행 공통 응답 success가 true여야 합니다.");
 
     const targetCultivationId = Number(client.variables.file.get("cultivationId"));
     const targetResult = response.body.data.results.find(function (result) {
         return Number(result.cultivationId) === targetCultivationId;
     });
 
-    client.assert(targetResult !== undefined, "테스트 재배지가 재실행 결과에 포함되어야 합니다.");
+    client.assert(targetResult !== undefined,
+        "대상 재배지가 재실행 결과에 포함되어야 합니다.");
     client.assert(targetResult.status === "EXISTING",
         "동일 날짜 재실행은 새 행이 아니라 EXISTING을 반환해야 합니다.");
 });

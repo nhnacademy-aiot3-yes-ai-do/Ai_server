@@ -1,8 +1,6 @@
 package site.yesaido.ai_server.config;
 
 import org.springframework.amqp.core.*;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
@@ -10,19 +8,23 @@ import org.springframework.context.annotation.Configuration;
 
 import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
 
+/**
+ * AI Server에서 사용하는 RabbitMQ 인프라와 메시지 변환기를 구성합니다.
+ *
+ * <p>{@code RabbitTemplate}은 Spring Boot 자동 설정에 맡깁니다.
+ * 수동 Template Bean을 만들지 않아 {@code application.yml}의 publisher
+ * confirm, returns, mandatory 설정과 기타 {@code RabbitTemplateConfigurer}
+ * 설정이 적용되도록 합니다.</p>
+ *
+ * <p>애플리케이션에서 사용하는 사용자 정의 JSON
+ * {@link MessageConverter}만 Bean으로 제공합니다.</p>
+ */
 @Configuration
 public class RabbitMQConfig {
 
     @Bean // 자바 객체 JSON 변환
     public MessageConverter messageConverter() {
         return new JacksonJsonMessageConverter();
-    }
-
-    @Bean // RabbitTemplate에 주입
-    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
-        RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
-        rabbitTemplate.setMessageConverter(messageConverter);
-        return rabbitTemplate;
     }
 
     // 공통 Dead Letter Exchange

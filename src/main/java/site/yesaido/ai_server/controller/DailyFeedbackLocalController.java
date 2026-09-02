@@ -100,11 +100,7 @@ public class DailyFeedbackLocalController {
             return ResponseEntity.notFound().build();
         }
 
-        DailyFeedbackLocalResponse response =
-                DailyFeedbackLocalResponse.from(
-                        existing.get(),
-                        objectMapper
-                );
+        DailyFeedbackLocalResponse response = DailyFeedbackLocalResponse.from(existing.get(), objectMapper);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }
@@ -145,15 +141,8 @@ public class DailyFeedbackLocalController {
          * @param objectMapper Context Snapshot 변환에 사용할 Jackson 2 ObjectMapper
          * @return 엔티티를 직접 노출하지 않는 로컬 조회 응답
          */
-        public static DailyFeedbackLocalResponse from(
-                DailyFeedback feedback,
-                ObjectMapper objectMapper
-        ) {
-            LinkedHashMap<String, Object> contextSnapshot =
-                    objectMapper.convertValue(
-                            feedback.getContextSnapshot(),
-                            CONTEXT_SNAPSHOT_TYPE
-                    );
+        public static DailyFeedbackLocalResponse from(DailyFeedback feedback, ObjectMapper objectMapper) {
+            LinkedHashMap<String, Object> contextSnapshot = objectMapper.convertValue(feedback.getContextSnapshot(), CONTEXT_SNAPSHOT_TYPE);
 
             return new DailyFeedbackLocalResponse(
                     feedback.getId(),

@@ -3,6 +3,7 @@ package site.yesaido.ai_server.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
@@ -14,15 +15,20 @@ import org.springframework.stereotype.Service;
 import site.yesaido.ai_server.dto.daily_feedback.DailyFeedbackContext;
 import site.yesaido.ai_server.exception.AiAnalysisFailedException;
 
+import java.math.RoundingMode;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 검증된 일일 피드백 Context를 프롬프트로 준비하고
  * LLM을 호출하여 저장 가능한 피드백 문자열을 생성하는 서비스입니다.
  *
  * <p>Context를 Jackson 2 {@link JsonNode}로 변환한 후 보안 정제기를
- * 통과한 JSON만 외부 모델에 전달합니다. 원본 Context와 내부 ID,
- * 민감한 연결정보는 프롬프트에 직접 전달하지 않습니다.</p>
+ * 통과한 JSON만 외부 모델에 전달합니다. 정제기가 만든 독립 복사본의
+ * 센서 최솟값·평균값·최댓값만 표시용으로 소수 셋째 자리에서 반올림하여
+ * 최대 둘째 자리까지 전달하며,
+ * 원본 Context와 DB Context Snapshot의 정밀도는 변경하지 않습니다.
+ * 내부 ID와 민감한 연결정보는 프롬프트에 직접 전달하지 않습니다.</p>
  *
  * <p>Gemini를 우선 호출하고, 호출 또는 출력 검증에 실패하면
  * {@code ollamaChatClient} Bean이 존재하는 경우에만 같은 프롬프트로
@@ -45,6 +51,14 @@ public class DailyFeedbackGenerationService {
     private static final String GEMINI_GENERATION_STAGE = "Gemini 호출 및 출력 검증";
     private static final String OLLAMA_PROVIDER_LOOKUP_STAGE = "Ollama fallback Bean 조회";
     private static final String OLLAMA_GENERATION_STAGE = "Ollama 호출 및 출력 검증";
+
+    private static final int SENSOR_DISPLAY_SCALE = 2;
+
+    private static final Set<String> SENSOR_STATISTIC_VALUE_FIELDS = Set.of(
+            "minimumValue",
+            "averageValue",
+            "maximumValue"
+    );
 
     private final ChatClient geminiChatClient;
     private final ObjectProvider<ChatClient> ollamaChatClientProvider;
@@ -112,9 +126,60 @@ public class DailyFeedbackGenerationService {
     private PreparedPrompt preparePrompt(DailyFeedbackContext context) {
         JsonNode rawContextNode = convertContextToJsonNode(context);
         JsonNode sanitizedContextNode = sanitizeContext(rawContextNode);
+        roundSensorStatisticsForPrompt(sanitizedContextNode);
         String sanitizedContextJson = serializeSanitizedContext(sanitizedContextNode);
 
         return renderPrompts(sanitizedContextJson);
+    }
+
+    /**
+     * LLM에 전달할 독립 Context 복사본의 센서 통계 표시값만
+     * 소수 셋째 자리에서 {@link RoundingMode#HALF_UP}으로 반올림하여
+     * 최대 둘째 자리까지 전달합니다.
+     *
+     * <p>{@code sensorStatistics} 배열 요소의 {@code minimumValue},
+     * {@code averageValue}, {@code maximumValue}만 대상으로 하며,
+     * 집계점 수, 임계값, 환경 유지율과 Vision 확률 등 다른 숫자는
+     * 변경하지 않습니다. null과 숫자가 아닌 값도 그대로 유지합니다.</p>
+     *
+     * @param sanitizedContextNode 보안 정제기가 생성한 프롬프트 전용 복사본
+     */
+    private void roundSensorStatisticsForPrompt(JsonNode sanitizedContextNode) {
+        try {
+            JsonNode sensorStatistics =
+                    sanitizedContextNode.path("sensorStatistics");
+
+            if (!sensorStatistics.isArray()) {
+                return;
+            }
+
+            for (JsonNode statistics : sensorStatistics) {
+                if (!(statistics instanceof ObjectNode statisticsObject)) {
+                    continue;
+                }
+
+                for (String fieldName : SENSOR_STATISTIC_VALUE_FIELDS) {
+                    JsonNode value = statisticsObject.get(fieldName);
+
+                    if (value == null || !value.isNumber()) {
+                        continue;
+                    }
+
+                    statisticsObject.put(
+                            fieldName,
+                            value.decimalValue().setScale(
+                                    SENSOR_DISPLAY_SCALE,
+                                    RoundingMode.HALF_UP
+                            )
+                    );
+                }
+            }
+        } catch (RuntimeException exception) {
+            throw createPreparationFailure(
+                    "센서 통계 표시 정밀도 정규화",
+                    exception
+            );
+        }
     }
 
     private JsonNode convertContextToJsonNode(DailyFeedbackContext context) {
