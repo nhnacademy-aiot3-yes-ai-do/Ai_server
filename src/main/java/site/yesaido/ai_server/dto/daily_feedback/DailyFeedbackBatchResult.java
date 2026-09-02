@@ -51,6 +51,35 @@ public record DailyFeedbackBatchResult(
             ZoneOffset.ofHours(9);
 
     public DailyFeedbackBatchResult {
+        validateDateAndSnapshot(feedbackDate, snapshotAt);
+        validateNonNegativeCounts(
+                targetCount,
+                createdCount,
+                existingCount,
+                failedCount
+        );
+
+        if (results == null) {
+            throw new IllegalArgumentException("results는 null일 수 없습니다.");
+        }
+
+        ResultSummary resultSummary = normalizeResults(results);
+
+        validateCounts(
+                targetCount,
+                createdCount,
+                existingCount,
+                failedCount,
+                resultSummary
+        );
+
+        results = List.copyOf(resultSummary.results());
+    }
+
+    private static void validateDateAndSnapshot(
+            LocalDate feedbackDate,
+            OffsetDateTime snapshotAt
+    ) {
         if (feedbackDate == null) {
             throw new IllegalArgumentException("feedbackDate는 null일 수 없습니다.");
         }
@@ -62,7 +91,14 @@ public record DailyFeedbackBatchResult(
         if (!SEOUL_OFFSET.equals(snapshotAt.getOffset())) {
             throw new IllegalArgumentException("snapshotAt의 offset은 +09:00이어야 합니다.");
         }
+    }
 
+    private static void validateNonNegativeCounts(
+            int targetCount,
+            int createdCount,
+            int existingCount,
+            int failedCount
+    ) {
         if (targetCount < 0) {
             throw new IllegalArgumentException("targetCount는 음수일 수 없습니다.");
         }
@@ -78,13 +114,12 @@ public record DailyFeedbackBatchResult(
         if (failedCount < 0) {
             throw new IllegalArgumentException("failedCount는 음수일 수 없습니다.");
         }
+    }
 
-        if (results == null) {
-            throw new IllegalArgumentException("results는 null일 수 없습니다.");
-        }
-
+    private static ResultSummary normalizeResults(
+            List<CultivationResult> results
+    ) {
         List<CultivationResult> normalizedResults = new ArrayList<>(results.size());
-
         Set<Long> cultivationIds = new HashSet<>();
 
         int actualCreatedCount = 0;
@@ -121,7 +156,22 @@ public record DailyFeedbackBatchResult(
 
         normalizedResults.sort(Comparator.comparing(CultivationResult::cultivationId));
 
-        if (targetCount != normalizedResults.size()) {
+        return new ResultSummary(
+                normalizedResults,
+                actualCreatedCount,
+                actualExistingCount,
+                actualFailedCount
+        );
+    }
+
+    private static void validateCounts(
+            int targetCount,
+            int createdCount,
+            int existingCount,
+            int failedCount,
+            ResultSummary resultSummary
+    ) {
+        if (targetCount != resultSummary.results().size()) {
             throw new IllegalArgumentException("targetCount는 results의 크기와 일치해야 합니다.");
         }
 
@@ -131,19 +181,17 @@ public record DailyFeedbackBatchResult(
             throw new IllegalArgumentException("createdCount, existingCount, failedCount의 합계는 targetCount와 일치해야 합니다.");
         }
 
-        if (createdCount != actualCreatedCount) {
+        if (createdCount != resultSummary.createdCount()) {
             throw new IllegalArgumentException("createdCount는 CREATED 결과의 실제 개수와 일치해야 합니다.");
         }
 
-        if (existingCount != actualExistingCount) {
+        if (existingCount != resultSummary.existingCount()) {
             throw new IllegalArgumentException("existingCount는 EXISTING 결과의 실제 개수와 일치해야 합니다.");
         }
 
-        if (failedCount != actualFailedCount) {
+        if (failedCount != resultSummary.failedCount()) {
             throw new IllegalArgumentException("failedCount는 FAILED 결과의 실제 개수와 일치해야 합니다.");
         }
-
-        results = List.copyOf(normalizedResults);
     }
 
     /**
@@ -224,6 +272,19 @@ public record DailyFeedbackBatchResult(
         private static final Pattern EXCEPTION_TYPE_PATTERN = Pattern.compile("^[A-Za-z0-9_$]+$");
 
         public CultivationResult {
+            validateRequiredFields(cultivationId, status);
+
+            if (status == CultivationStatus.FAILED) {
+                validateFailedFields(failureStage, exceptionType);
+            } else {
+                validateSuccessfulFields(failureStage, exceptionType);
+            }
+        }
+
+        private static void validateRequiredFields(
+                Long cultivationId,
+                CultivationStatus status
+        ) {
             if (cultivationId == null || cultivationId <= 0) {
                 throw new IllegalArgumentException("cultivationId는 null이 아니며 0보다 커야 합니다.");
             }
@@ -231,27 +292,35 @@ public record DailyFeedbackBatchResult(
             if (status == null) {
                 throw new IllegalArgumentException("status는 null일 수 없습니다.");
             }
+        }
 
-            if (status == CultivationStatus.FAILED) {
-                if (failureStage == null) {
-                    throw new IllegalArgumentException("FAILED 결과에는 failureStage가 필수입니다.");
-                }
+        private static void validateFailedFields(
+                FailureStage failureStage,
+                String exceptionType
+        ) {
+            if (failureStage == null) {
+                throw new IllegalArgumentException("FAILED 결과에는 failureStage가 필수입니다.");
+            }
 
-                if (exceptionType == null || exceptionType.isBlank()) {
-                    throw new IllegalArgumentException("FAILED 결과에는 exceptionType이 필수입니다.");
-                }
+            if (exceptionType == null || exceptionType.isBlank()) {
+                throw new IllegalArgumentException("FAILED 결과에는 exceptionType이 필수입니다.");
+            }
 
-                if (!EXCEPTION_TYPE_PATTERN.matcher(exceptionType).matches()) {
-                    throw new IllegalArgumentException("exceptionType은 영문자, 숫자, _ 또는 $만 포함할 수 있습니다.");
-                }
-            } else {
-                if (failureStage != null) {
-                    throw new IllegalArgumentException("CREATED 또는 EXISTING 결과에는 failureStage를 포함할 수 없습니다.");
-                }
+            if (!EXCEPTION_TYPE_PATTERN.matcher(exceptionType).matches()) {
+                throw new IllegalArgumentException("exceptionType은 영문자, 숫자, _ 또는 $만 포함할 수 있습니다.");
+            }
+        }
 
-                if (exceptionType != null) {
-                    throw new IllegalArgumentException("CREATED 또는 EXISTING 결과에는 exceptionType을 포함할 수 없습니다.");
-                }
+        private static void validateSuccessfulFields(
+                FailureStage failureStage,
+                String exceptionType
+        ) {
+            if (failureStage != null) {
+                throw new IllegalArgumentException("CREATED 또는 EXISTING 결과에는 failureStage를 포함할 수 없습니다.");
+            }
+
+            if (exceptionType != null) {
+                throw new IllegalArgumentException("CREATED 또는 EXISTING 결과에는 exceptionType을 포함할 수 없습니다.");
             }
         }
 
@@ -315,6 +384,14 @@ public record DailyFeedbackBatchResult(
                     simpleName
             );
         }
+    }
+
+    private record ResultSummary(
+            List<CultivationResult> results,
+            int createdCount,
+            int existingCount,
+            int failedCount
+    ) {
     }
 
     /**

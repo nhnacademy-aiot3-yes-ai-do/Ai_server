@@ -438,16 +438,22 @@ class DailyFeedbackOutputValidatorTest {
 
         String duplicatedHeading = validOutput.replace(
                 "## 이탈 및 제어",
-                "## 센서별 통계\n"
-                        + "중복된 제목의 본문입니다.\n\n"
-                        + "## 이탈 및 제어"
+                """
+                ## 센서별 통계
+                중복된 제목의 본문입니다.
+
+                ## 이탈 및 제어\
+                """
         );
 
         String additionalH2Heading = validOutput.replace(
                 "## Vision 분석",
-                "## 추가 분석\n"
-                        + "추가 제목의 본문입니다.\n\n"
-                        + "## Vision 분석"
+                """
+                ## 추가 분석
+                추가 제목의 본문입니다.
+
+                ## Vision 분석\
+                """
         );
 
         String headingWithTrailingSpace = validOutput.replace("## 센서별 통계", "## 센서별 통계 ");

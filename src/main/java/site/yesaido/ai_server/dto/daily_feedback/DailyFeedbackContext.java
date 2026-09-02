@@ -75,6 +75,41 @@ public record DailyFeedbackContext(
     private static final String OWNER_ROLE = "OWNER";
 
     public DailyFeedbackContext {
+        validateContextIdentity(
+                cultivationId,
+                feedbackDate,
+                dataGeneratorSnapshotAt
+        );
+        validateRequiredComponents(
+                cultivationDetail,
+                mushroomReference,
+                currentThresholds,
+                sensorStatistics,
+                environmentCompliance,
+                notificationMetrics,
+                visionAnalysis
+        );
+
+        mushroomReference = validateAndCopyMushroomReference(mushroomReference);
+        currentThresholds = normalizeCurrentThresholds(cultivationId, currentThresholds);
+        sensorStatistics = normalizeSensorStatistics(cultivationId, sensorStatistics);
+
+        validateContextRelationships(
+                cultivationId,
+                feedbackDate,
+                cultivationDetail,
+                mushroomReference,
+                environmentCompliance,
+                notificationMetrics,
+                visionAnalysis
+        );
+    }
+
+    private static void validateContextIdentity(
+            Long cultivationId,
+            LocalDate feedbackDate,
+            OffsetDateTime dataGeneratorSnapshotAt
+    ) {
         if (cultivationId == null || cultivationId <= 0) {
             throw new IllegalArgumentException("cultivationId는 null이 아니며 0보다 커야 합니다.");
         }
@@ -92,7 +127,17 @@ public record DailyFeedbackContext(
                     "dataGeneratorSnapshotAt의 offset은 +09:00이어야 합니다."
             );
         }
+    }
 
+    private static void validateRequiredComponents(
+            DailyCultivationDetailResponse cultivationDetail,
+            MushroomReferenceInfoResponse mushroomReference,
+            List<DataGeneratorThresholdResponse> currentThresholds,
+            List<SensorChannelStatistics> sensorStatistics,
+            DailyEnvironmentCompliance environmentCompliance,
+            DailyNotificationMetrics notificationMetrics,
+            DailyVisionAnalysisSnapshot visionAnalysis
+    ) {
         if (cultivationDetail == null) {
             throw new IllegalArgumentException("cultivationDetail은 null일 수 없습니다.");
         }
@@ -120,11 +165,17 @@ public record DailyFeedbackContext(
         if (visionAnalysis == null) {
             throw new IllegalArgumentException("visionAnalysis는 null일 수 없습니다. 사진이 없으면 DailyVisionAnalysisSnapshot.withoutPhoto를 사용해야 합니다.");
         }
+    }
 
-        mushroomReference = validateAndCopyMushroomReference(mushroomReference);
-        currentThresholds = normalizeCurrentThresholds(cultivationId, currentThresholds);
-        sensorStatistics = normalizeSensorStatistics(cultivationId, sensorStatistics);
-
+    private static void validateContextRelationships(
+            Long cultivationId,
+            LocalDate feedbackDate,
+            DailyCultivationDetailResponse cultivationDetail,
+            MushroomReferenceInfoResponse mushroomReference,
+            DailyEnvironmentCompliance environmentCompliance,
+            DailyNotificationMetrics notificationMetrics,
+            DailyVisionAnalysisSnapshot visionAnalysis
+    ) {
         if (!cultivationId.equals(cultivationDetail.cultivationId())) {
             throw new IllegalArgumentException("cultivationDetail의 cultivationId가 Context와 일치하지 않습니다: contextCultivationId=%s, detailCultivationId=%s"
                     .formatted(cultivationId, cultivationDetail.cultivationId()));
@@ -261,85 +312,26 @@ public record DailyFeedbackContext(
         return List.copyOf(normalized);
     }
 
-    private static MushroomReferenceInfoResponse validateAndCopyMushroomReference(MushroomReferenceInfoResponse source) {
-        if (source.id() <= 0) {
-            throw new IllegalArgumentException("mushroomReference.id는 0보다 커야 합니다.");
-        }
+    private static MushroomReferenceInfoResponse validateAndCopyMushroomReference(
+            MushroomReferenceInfoResponse source
+    ) {
+        validateMushroomReference(source);
 
-        if (isNullOrBlank(source.mushroomNameKo())) {
-            throw new IllegalArgumentException("mushroomNameKo는 null 또는 공백일 수 없습니다.");
-        }
-
-        if (isNullOrBlank(source.mushroomNameEn())) {
-            throw new IllegalArgumentException("mushroomNameEn은 null 또는 공백일 수 없습니다.");
-        }
-
-        if (isNullOrBlank(source.mushroomScientificName())) {
-            throw new IllegalArgumentException("mushroomScientificName은 null 또는 공백일 수 없습니다.");
-        }
-
-        if (source.thresholdInfoResponses() == null) {
-            throw new IllegalArgumentException("thresholdInfoResponses는 null일 수 없습니다.");
-        }
-
-        List<MushroomReferenceThresholdInfoResponse> normalizedThresholds = new ArrayList<>(source.thresholdInfoResponses().size());
+        List<MushroomReferenceThresholdInfoResponse> normalizedThresholds =
+                new ArrayList<>(source.thresholdInfoResponses().size());
         Set<Long> thresholdIds = new HashSet<>();
         Set<MushroomThresholdKey> thresholdKeys = new HashSet<>();
 
         for (MushroomReferenceThresholdInfoResponse threshold : source.thresholdInfoResponses()) {
-            if (threshold == null) {
-                throw new IllegalArgumentException("thresholdInfoResponses에는 null 요소가 포함될 수 없습니다.");
-            }
+            SensorTypeInfoResponse sensorType =
+                    validateMushroomReferenceThreshold(threshold);
 
-            if (threshold.id() == null || threshold.id() <= 0) {
-                throw new IllegalArgumentException("버섯 참조 임계값 ID는 null이 아니며 0보다 커야 합니다.");
-            }
-
-            SensorTypeInfoResponse sensorType = threshold.sensorType();
-
-            if (sensorType == null) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 sensorType은 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (sensorType.id() <= 0) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.id는 0보다 커야 합니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (isNullOrBlank(sensorType.type())) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.type은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (isNullOrBlank(sensorType.valueUnit())) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.valueUnit은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (isNullOrBlank(threshold.thresholdType())) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 thresholdType은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (threshold.thresholdMin() == null) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMin은 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (threshold.thresholdMax() == null) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMax는 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (threshold.thresholdMin().compareTo(threshold.thresholdMax()) > 0) {
-                throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMin은 thresholdMax보다 클 수 없습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            if (!thresholdIds.add(threshold.id())) {
-                throw new IllegalArgumentException("버섯 참조 임계값 ID가 중복되었습니다: thresholdId=%s".formatted(threshold.id()));
-            }
-
-            MushroomThresholdKey thresholdKey = new MushroomThresholdKey(sensorType.id(), threshold.thresholdType());
-
-            if (!thresholdKeys.add(thresholdKey)) {
-                throw new IllegalArgumentException("동일한 sensorType.id와 thresholdType 조합이 중복되었습니다: sensorTypeId=%s, thresholdType=%s"
-                        .formatted(sensorType.id(), threshold.thresholdType())
-                );
-            }
+            validateUniqueMushroomThreshold(
+                    threshold,
+                    sensorType,
+                    thresholdIds,
+                    thresholdKeys
+            );
 
             normalizedThresholds.add(threshold);
         }
@@ -360,6 +352,100 @@ public record DailyFeedbackContext(
                 source.mushroomScientificName(),
                 List.copyOf(normalizedThresholds)
         );
+    }
+
+    private static void validateMushroomReference(
+            MushroomReferenceInfoResponse source
+    ) {
+        if (source.id() <= 0) {
+            throw new IllegalArgumentException("mushroomReference.id는 0보다 커야 합니다.");
+        }
+
+        if (isNullOrBlank(source.mushroomNameKo())) {
+            throw new IllegalArgumentException("mushroomNameKo는 null 또는 공백일 수 없습니다.");
+        }
+
+        if (isNullOrBlank(source.mushroomNameEn())) {
+            throw new IllegalArgumentException("mushroomNameEn은 null 또는 공백일 수 없습니다.");
+        }
+
+        if (isNullOrBlank(source.mushroomScientificName())) {
+            throw new IllegalArgumentException("mushroomScientificName은 null 또는 공백일 수 없습니다.");
+        }
+
+        if (source.thresholdInfoResponses() == null) {
+            throw new IllegalArgumentException("thresholdInfoResponses는 null일 수 없습니다.");
+        }
+    }
+
+    private static SensorTypeInfoResponse validateMushroomReferenceThreshold(
+            MushroomReferenceThresholdInfoResponse threshold
+    ) {
+        if (threshold == null) {
+            throw new IllegalArgumentException("thresholdInfoResponses에는 null 요소가 포함될 수 없습니다.");
+        }
+
+        if (threshold.id() == null || threshold.id() <= 0) {
+            throw new IllegalArgumentException("버섯 참조 임계값 ID는 null이 아니며 0보다 커야 합니다.");
+        }
+
+        SensorTypeInfoResponse sensorType = threshold.sensorType();
+
+        if (sensorType == null) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 sensorType은 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (sensorType.id() <= 0) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.id는 0보다 커야 합니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (isNullOrBlank(sensorType.type())) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.type은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (isNullOrBlank(sensorType.valueUnit())) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 sensorType.valueUnit은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (isNullOrBlank(threshold.thresholdType())) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 thresholdType은 null 또는 공백일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (threshold.thresholdMin() == null) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMin은 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (threshold.thresholdMax() == null) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMax는 null일 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        if (threshold.thresholdMin().compareTo(threshold.thresholdMax()) > 0) {
+            throw new IllegalArgumentException("버섯 참조 임계값의 thresholdMin은 thresholdMax보다 클 수 없습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        return sensorType;
+    }
+
+    private static void validateUniqueMushroomThreshold(
+            MushroomReferenceThresholdInfoResponse threshold,
+            SensorTypeInfoResponse sensorType,
+            Set<Long> thresholdIds,
+            Set<MushroomThresholdKey> thresholdKeys
+    ) {
+        if (!thresholdIds.add(threshold.id())) {
+            throw new IllegalArgumentException("버섯 참조 임계값 ID가 중복되었습니다: thresholdId=%s".formatted(threshold.id()));
+        }
+
+        MushroomThresholdKey thresholdKey = new MushroomThresholdKey(
+                sensorType.id(),
+                threshold.thresholdType()
+        );
+
+        if (!thresholdKeys.add(thresholdKey)) {
+            throw new IllegalArgumentException("동일한 sensorType.id와 thresholdType 조합이 중복되었습니다: sensorTypeId=%s, thresholdType=%s"
+                    .formatted(sensorType.id(), threshold.thresholdType())
+            );
+        }
     }
 
     private static boolean isNullOrBlank(String value) {

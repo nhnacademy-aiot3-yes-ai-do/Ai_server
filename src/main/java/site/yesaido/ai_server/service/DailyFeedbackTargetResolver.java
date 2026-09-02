@@ -39,6 +39,9 @@ import java.util.TreeSet;
 @Component
 public class DailyFeedbackTargetResolver {
 
+    private static final String SNAPSHOT_NULL_MESSAGE =
+            "snapshot은 null일 수 없습니다.";
+
     /**
      * Snapshot의 센서와 임계값에 등장하는 모든 경작지 ID를 반환합니다.
      *
@@ -48,7 +51,7 @@ public class DailyFeedbackTargetResolver {
      */
     public List<Long> resolveCultivationIds(DataGeneratorSnapshotResponse snapshot) {
         if (snapshot == null) {
-            throw new IllegalArgumentException("snapshot은 null일 수 없습니다.");
+            throw new IllegalArgumentException(SNAPSHOT_NULL_MESSAGE);
         }
 
         Set<Long> cultivationIds = new TreeSet<>();
@@ -78,7 +81,7 @@ public class DailyFeedbackTargetResolver {
      */
     public List<SensorChannelKey> resolveChannels(DataGeneratorSnapshotResponse snapshot, Long cultivationId) {
         if (snapshot == null) {
-            throw new IllegalArgumentException("snapshot은 null일 수 없습니다.");
+            throw new IllegalArgumentException(SNAPSHOT_NULL_MESSAGE);
         }
 
         if (cultivationId == null || cultivationId <= 0) {
@@ -140,7 +143,7 @@ public class DailyFeedbackTargetResolver {
             Long cultivationId
     ) {
         if (snapshot == null) {
-            throw new IllegalArgumentException("snapshot은 null일 수 없습니다.");
+            throw new IllegalArgumentException(SNAPSHOT_NULL_MESSAGE);
         }
 
         if (cultivationId == null || cultivationId <= 0) {
