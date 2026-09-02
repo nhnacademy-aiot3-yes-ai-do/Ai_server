@@ -87,9 +87,6 @@ feign:
 image-download:
   allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}
 
-server:
-  port: 9003
-
 daily-feedback:
   outbox:
     batch-size: ${DAILY_FEEDBACK_OUTBOX_BATCH_SIZE:20}
