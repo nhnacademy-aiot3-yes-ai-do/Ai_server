@@ -20,8 +20,10 @@ import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageResponse;
+import site.yesaido.ai_server.entity.DailyFeedback;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
+import site.yesaido.ai_server.repository.DailyFeedbackRepository;
 import site.yesaido.ai_server.repository.InsightRepository;
 
 import java.math.BigDecimal;
@@ -42,6 +44,9 @@ class InsightServiceTest {
 
     @Mock
     private InsightRepository insightRepository;
+
+    @Mock
+    private DailyFeedbackRepository dailyFeedbackRepository;
 
     @Mock
     private CultivationClient cultivationClient;
@@ -252,7 +257,7 @@ class InsightServiceTest {
     }
 
     @Test
-    @DisplayName("AI 요약(Gemini) 실패 시 catch 블록을 타서 기본 템플릿(하드코딩 문자열) 반환 검증")
+    @DisplayName("AI 요약(Gemini) 통신 실패 시 기본 요약 템플릿(버섯명, 수확량 포함)으로 대체 생성 검증")
     void summaryGemini_ExceptionFallback() {
         // AI 통신 서버가 죽었다고 강제 가정 (에러 뱉음)
         when(chatClient.prompt()).thenThrow(new RuntimeException("Gemini 통신 완전 실패"));
@@ -265,8 +270,7 @@ class InsightServiceTest {
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        // catch 블록이 작동하여 "평균 온도 20.50℃..." 같은 기본 하드코딩 템플릿 문구가 반환되었는지 검증
-        assertThat(response.summary()).contains("평균 온도 20.50℃");
+        assertThat(response.summary()).contains("느타리버섯").contains("400g");
     }
 
     @Test
@@ -321,7 +325,7 @@ class InsightServiceTest {
     }
 
     @Test
-    @DisplayName("환경 데이터 조회 실패(예외 발생) 시 Fallback 기본 수치(80점 및 표준 센서값)로 저장 검증")
+    @DisplayName("환경 데이터 조회 실패 시 가짜 더미값 대신 점수와 센서 평균을 null로 안전하게 저장 검증")
     void saveInsight_ComplianceExceptionFallback() {
         setUpMockChatClient("느타리버섯 요약문");
         when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
@@ -335,11 +339,45 @@ class InsightServiceTest {
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        // 에러로 멈추지 않고 기본 80점과 기본 센서값으로 저장되는지 검증
         assertThat(response).isNotNull();
         verify(insightRepository).save(argThat(saved ->
-                saved.getGrowthScore().equals(80) &&
-                        saved.getAvgTemperature().compareTo(new BigDecimal("20.50")) == 0
+                saved.getGrowthScore() == null &&
+                        saved.getAvgTemperature() == null
         ));
+    }
+
+    @Test
+    @DisplayName("인사이트 상세 조회 시 일자별 피드백 타임라인 목록이 정상 반환되는지 검증")
+    void getInsightDetailTest() {
+        Insight mockInsight = Insight.builder()
+                .cultivationId(1L)
+                .mushroomId(2L)
+                .avgTemperature(new BigDecimal("22.50"))
+                .avgHumidity(new BigDecimal("82.00"))
+                .avgCo2(new BigDecimal("650.00"))
+                .avgLight(new BigDecimal("120.00"))
+                .harvestWeightGrams(new BigDecimal("400.00"))
+                .growthScore(85)
+                .summary("느타리버섯 요약문")
+                .build();
+
+        DailyFeedback df1 = DailyFeedback.builder()
+                .cultivationId(1L)
+                .feedbackDate(java.time.LocalDate.of(2026, 8, 1))
+                .hasVisionAnalysis(false)
+                .content("1일차 피드백 내용")
+                .contextSnapshot(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode())
+                .build();
+
+        when(insightRepository.findById(10L)).thenReturn(Optional.of(mockInsight));
+        when(dailyFeedbackRepository.findAllByCultivationId(1L)).thenReturn(List.of(df1));
+
+        site.yesaido.ai_server.dto.ai.insight.InsightDetailResponse detail = insightService.getInsightDetail(10L);
+
+        assertThat(detail).isNotNull();
+        assertThat(detail.cultivationId()).isEqualTo(1L);
+        assertThat(detail.dailyRecords()).hasSize(1);
+        assertThat(detail.dailyRecords().getFirst().dayNumber()).isEqualTo(1);
+        assertThat(detail.dailyRecords().getFirst().dailyFeedback()).isEqualTo("1일차 피드백 내용");
     }
 }

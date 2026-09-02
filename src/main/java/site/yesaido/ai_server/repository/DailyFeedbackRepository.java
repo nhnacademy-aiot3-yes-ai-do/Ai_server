@@ -1,9 +1,12 @@
 package site.yesaido.ai_server.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import site.yesaido.ai_server.entity.DailyFeedback;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -15,4 +18,7 @@ import java.util.Optional;
 public interface DailyFeedbackRepository extends JpaRepository<DailyFeedback, Long> {
 
     Optional<DailyFeedback> findByCultivationIdAndFeedbackDate(Long cultivationId, LocalDate feedbackDate);
+    // Cultivation 날짜순으로 전체 일일피드백 목록 조회 추가(인사이트 요약에 사용)
+    @Query("SELECT df FROM DailyFeedback df WHERE df.cultivationId = :cultivationId ORDER BY  df.feedbackDate ASC")
+    List<DailyFeedback> findAllByCultivationId(@Param("cultivationId") Long cultivationId);
 }

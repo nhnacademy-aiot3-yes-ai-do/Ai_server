@@ -8,15 +8,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
 import site.yesaido.ai_server.config.PromptProperties;
+import site.yesaido.ai_server.dto.ai.insight.*;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
-import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
-import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageResponse;
+import site.yesaido.ai_server.dto.cultivation.ProductScoreUpdateRequest;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.reader.MushCsvReader;
+import site.yesaido.ai_server.repository.DailyFeedbackRepository;
 import site.yesaido.ai_server.repository.InsightRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,12 +28,23 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
+import com.fasterxml.jackson.databind.JsonNode;
+import site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse;
+import site.yesaido.ai_server.entity.DailyFeedback;
+import java.util.Set;
+import java.util.stream.IntStream;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class InsightService {
+    private static final String TEMPERATURE = "TEMPERATURE";
+    private static final String HUMIDITY = "HUMIDITY";
+    private static final String CO2 = "CO2";
+    private static final String LIGHT = "LIGHT";
+
     private final InsightRepository insightRepository;
+    private final DailyFeedbackRepository dailyFeedbackRepository;
     private final CultivationClient cultivationClient;
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader; // mushroomId로 버섯 이름 가져오기 위해 추가
@@ -52,58 +64,60 @@ public class InsightService {
         // Cultivation_server에서 기본 정보(버섯 ID) 가져오기
         CultivationClient client = Objects.requireNonNull(cultivationClient);
         CultivationDetailResponse cultivation = client.getCultivation(userId, cultivationId);
-        // Cultivation_server에서 수확량(g) 가져오기
-        HarvestDetailResponse harvest = client.getHarvest(cultivationId, userId);
-
-        LocalDateTime startedAt =
-                cultivation != null ? cultivation.startedAt() : null;
-
-        LocalDateTime harvestedAt =
-                harvest != null ? harvest.harvestedAt() : null;
-
-        if (startedAt != null
-                && harvestedAt != null
-                && harvestedAt.isBefore(startedAt)) {
-            throw new IllegalArgumentException(
-                    "수확일은 재배 시작일보다 빠를 수 없습니다."
-            );
+        if (cultivation == null) {
+            throw new IllegalStateException("재배지 기본 정보를 조회할 수 없습니다. cultivationId=" + cultivationId);
+        }
+        if (cultivation.mushroomId() == null) {
+            throw new IllegalStateException("재배지의 버섯 정보(mushroomId)가 존재하지 않습니다. cultivationId=" + cultivationId);
         }
 
-        String startedAtText =
-                startedAt != null
-                        ? startedAt.toLocalDate().toString()
-                        : "정보 없음";
+        // Cultivation_server에서 수확량(g) 가져오기
+        HarvestDetailResponse harvest = client.getHarvest(cultivationId, userId);
+        if (harvest == null || harvest.harvestWeight() == null) {
+            throw new IllegalStateException("수확량 정보가 누락되었거나 조회할 수 없습니다. cultivationId=" + cultivationId);
+        }
 
-        String harvestedAtText =
-                harvestedAt != null
-                        ? harvestedAt.toLocalDate().toString()
-                        : "정보 없음";
+        LocalDateTime startedAt = cultivation.startedAt();
+        LocalDateTime harvestedAt = harvest.harvestedAt();
 
+        if (startedAt != null && harvestedAt != null && harvestedAt.isBefore(startedAt)) {
+            throw new IllegalArgumentException("수확일은 재배 시작일보다 빠를 수 없습니다.");
+        }
+
+        String startedAtText = (startedAt != null) ? startedAt.toLocalDate().toString() : "정보 없음";
+        String harvestedAtText = (harvestedAt != null) ? harvestedAt.toLocalDate().toString() : "정보 없음";
         String cultivationPeriod = calculateCultivationPeriod(startedAt, harvestedAt);
         BigDecimal harvestWeight = getValidHarvestWeight(harvest);
 
         EnvironmentComplianceResponse compliance = null;
         List<SensorTypeAverageResponse> sensorAverages = null;
-        try{
+        try {
             compliance = client.getEnvironmentCompliance(cultivationId, userId);
             SensorTypeAverageListResponse averageResponse = client.getSensorValuesAverage(cultivationId, userId);
             sensorAverages = (averageResponse != null) ? averageResponse.sensorTypeAverages() : null;
         } catch (Exception e) {
-            log.warn("환경 유지율 조회 실패 (cultivationId={}). 기본 점수 및 기본 수치로 대체합니다.", cultivationId, e);
+            log.warn("환경 유지율 및 센서 평균 조회 실패 (cultivationId={})", cultivationId, e);
         }
 
-        Integer growthScore = calculateGrowthScore(compliance); // 환경 유지율 기반 성장 점수 계산
+        Integer growthScore = calculateGrowthScore(compliance);
+        if (growthScore != null) {
+            try {
+                client.updateProductScore(cultivationId, new ProductScoreUpdateRequest(BigDecimal.valueOf(growthScore)));
+                log.info("Cultivation_server에 수확 상품 점수 갱신 성공: cultivationId={}, score={}", cultivationId, growthScore);
+            } catch (Exception e) {
+                log.warn("Cultivation_server 상품 점수 갱신 실패 (cultivationId={}): {}", cultivationId, e.getMessage());
+            }
+        }
 
-        // 실제 센서별 평균값 추출 (조회 실패 시 기본값 사용)
-        BigDecimal avgTemp = findSensorAverage(sensorAverages, "TEMPERATURE", new BigDecimal("20.50"));
-        BigDecimal avgHum  = findSensorAverage(sensorAverages, "HUMIDITY", new BigDecimal("80.00"));
-        BigDecimal avgCo2  = findSensorAverage(sensorAverages, "CO2", new BigDecimal("750.00"));
-        BigDecimal avgLight= findSensorAverage(sensorAverages, "LIGHT", new BigDecimal("100.00"));
+        // [컴파일 에러 해결 및 더미값 제거] 실제 센서 평균값 추출 (없으면 null)
+        BigDecimal avgTemp = findSensorAverage(sensorAverages, TEMPERATURE);
+        BigDecimal avgHum  = findSensorAverage(sensorAverages, HUMIDITY);
+        BigDecimal avgCo2  = findSensorAverage(sensorAverages, CO2);
+        BigDecimal avgLight= findSensorAverage(sensorAverages, LIGHT);
 
         String sensorDataText = buildSensorDataText(sensorAverages, compliance);
 
-        Long mushroomId = (cultivation != null && cultivation.mushroomId() != null) ? cultivation.mushroomId() : 1L;
-        // MushroomCsvReader 이용해 mushroomId에 해당하는 버섯 이름 가져오기
+        Long mushroomId = cultivation.mushroomId();
         MushCsvReader csvReader = Objects.requireNonNull(mushCsvReader);
         String mushroomName = csvReader.readMushroomCsv().stream()
                 .filter(dto -> dto.mushroomId().equals(mushroomId))
@@ -111,10 +125,17 @@ public class InsightService {
                 .findFirst()
                 .orElse("버섯");
 
+        // 추가 센서 장착 이력 분석
+        String additionalSensorsText = buildAdditionalSensorsText(client, userId, cultivationId);
+        // 일일 피드백 누적 데이터 분석(모드 전환, 알림/제어 통계, 병충해 유무)
+        List<DailyFeedback> dailyFeedbacks = dailyFeedbackRepository.findAllByCultivationId(cultivationId);
+        DailyStatsSummary dailyStats = analyzeDailyFeedbacks(dailyFeedbacks);
+
         // Insight 요약문 생성
+        CultivationTimeInfo timeInfo = new CultivationTimeInfo(startedAtText, harvestedAtText, cultivationPeriod);
         String summary = summaryGemini(
-                mushroomName, sensorDataText, harvestWeight, growthScore,
-                startedAtText, harvestedAtText, cultivationPeriod
+                mushroomName, timeInfo, harvestWeight,
+                growthScore, sensorDataText, additionalSensorsText, dailyStats
         );
 
         Insight insight = Insight.builder()
@@ -144,9 +165,10 @@ public class InsightService {
 
     // Gemini로 insight 요약
     private String summaryGemini(
-            String mushroomName, String sensorDataText,
-            BigDecimal weight, Integer score, String startedAtText,
-            String harvestedAtText, String cultivationPeriod
+            String mushroomName, CultivationTimeInfo timeInfo,
+            BigDecimal weight, Integer score,
+            String sensorDataText, String additionalSensorsText,
+            DailyStatsSummary dailyStats
     ){
         try{
             ChatClient client = Objects.requireNonNull(chatClient);
@@ -154,27 +176,28 @@ public class InsightService {
                     .system(promptProperties.getInsightSummarySystemPrompt())
                     .user(u -> u.text(promptProperties.getInsightSummaryUserPrompt())
                             .param("mushroomName", mushroomName)
-                            .param("sensorDataText", sensorDataText)
+                            .param("startedAt", timeInfo.startedAt())
+                            .param("harvestedAt", timeInfo.harvestedAt())
+                            .param("cultivationPeriod", timeInfo.period())
+                            .param("modeSwitchInfo", dailyStats.modeSwitchInfo())
                             .param("harvestWeight", weight)
                             .param("growthScore", score)
-                            .param("startedAt", startedAtText)
-                            .param("harvestedAt", harvestedAtText)
-                            .param("cultivationPeriod", cultivationPeriod)
+                            .param("sensorDataText", sensorDataText)
+                            .param("additionalSensorsText", additionalSensorsText)
+                            .param("totalEvents", dailyStats.totalEvents())
+                            .param("thresholdAlerts", dailyStats.thresholdAlerts())
+                            .param("actuatorSuccessCount", dailyStats.actuatorSuccessCount())
+                            .param("diseaseStatusText", dailyStats.diseaseStatusText())
+                            .param("stableDaysText", dailyStats.stableDaysText())
+                            .param("dailyFeedbackSummary", dailyStats.dailySummaryExcerpt())
                     )
-
                     .call()
                     .content();
         } catch (Exception e) {
             log.warn("Gemini 요약 생성 실패, 기본 템플릿으로 대체합니다.", e);
             return String.format(
-                    "%s를 %s부터 %s까지 총 %s 동안 재배해 평균 온도 20.50℃, 습도 80.00%%, CO2 750.00ppm, " +
-                            "조도 100.00lx 환경에서 %d점의 환경 유지 점수와 약 %.0fg의 수확량을 기록했습니다.",
-                    mushroomName,
-                    startedAtText,
-                    harvestedAtText,
-                    cultivationPeriod,
-                    score,
-                    weight
+                    "%s를 %s부터 %s까지 총 %s 동안 재배해 %d점의 환경 유지 점수와 약 %.0fg의 수확량을 기록했습니다.",
+                    mushroomName, timeInfo.startedAt(), timeInfo.harvestedAt(), timeInfo.period(), score, weight
             );
         }
     }
@@ -246,29 +269,31 @@ public class InsightService {
             return List.of(-1L);
         }
     }
-
-    private Integer calculateGrowthScore(EnvironmentComplianceResponse compliance){
-        if (compliance == null) return 80;
+    // 생육 점수 로직 변경 필요
+    private Integer calculateGrowthScore(EnvironmentComplianceResponse compliance) {
+        if (compliance == null) return null;
 
         List<BigDecimal> score = Stream.of(
                 compliance.temperatureCompliance(),
                 compliance.humidityCompliance(),
                 compliance.co2Compliance(),
                 compliance.lightCompliance()
-        ).filter(Objects::nonNull).toList(); // null 값 걸러내기
-        if(score.isEmpty()) return 80;
-        // 센서 유지율 평균 계산(반올림)
+        ).filter(Objects::nonNull).toList();
+
+        if (score.isEmpty()) return null;
+
         BigDecimal sum = score.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         return sum.divide(BigDecimal.valueOf(score.size()), 0, RoundingMode.HALF_UP).intValue();
     }
 
-    // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 기본값 사용)
-    private BigDecimal findSensorAverage(List<SensorTypeAverageResponse> list, String sensorType, BigDecimal defaultVal){
-        if(list == null) return defaultVal;
+    // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 null)
+    private BigDecimal findSensorAverage(List<SensorTypeAverageResponse> list, String sensorType) {
+        if (list == null) return null;
         return list.stream()
                 .filter(s -> sensorType.equalsIgnoreCase(s.sensorType()) && s.averageValue() != null)
                 .map(s -> BigDecimal.valueOf(s.averageValue()).setScale(2, RoundingMode.HALF_UP))
-                .findFirst().orElse(defaultVal);
+                .findFirst()
+                .orElse(null);
     }
 
     // 재배 기간 계산 분리
@@ -285,16 +310,14 @@ public class InsightService {
 
     // 수확량 검증 분리
     private BigDecimal getValidHarvestWeight(HarvestDetailResponse harvest) {
-        BigDecimal harvestWeight = (harvest != null && harvest.harvestWeight() != null)
-                ? harvest.harvestWeight() : new BigDecimal("350.00");
-
-        if (harvestWeight.signum() < 0) {
-            throw new IllegalArgumentException("수확량이 음수입니다.");
+        if (harvest == null || harvest.harvestWeight() == null) {
+            throw new IllegalArgumentException("수확량 정보가 존재하지 않습니다.");
         }
-        if (harvestWeight.compareTo(new BigDecimal("9999.99")) > 0) {
-            return new BigDecimal("9999.99");
+        BigDecimal weight = harvest.harvestWeight();
+        if (weight.signum() < 0) {
+            throw new IllegalArgumentException("수확량이 0보다 작을 수 없습니다: " + weight);
         }
-        return harvestWeight;
+        return weight.compareTo(new BigDecimal("9999.99")) > 0 ? new BigDecimal("9999.99") : weight;
     }
 
     // 센서 및 유지율 텍스트 빌더 분리
@@ -303,11 +326,9 @@ public class InsightService {
         appendSensorAverages(sb, sensorAverages);
         appendCompliance(sb, compliance);
 
+        // 데이터 없음 명시
         if (sb.isEmpty()) {
-            sb.append(" - 평균 온도: 20.50℃\n")
-                    .append(" - 평균 습도: 80.00%\n")
-                    .append(" - 평균 CO2: 750.00ppm\n")
-                    .append(" - 평균 조도: 100.00lx\n");
+            sb.append(" - 수집된 센서 평균 및 유지율 데이터가 없습니다.\n");
         }
         return sb.toString();
     }
@@ -342,8 +363,167 @@ public class InsightService {
             sb.append(String.format(" - 조도 적정 유지율: %.2f%%%n", compliance.lightCompliance()));
         }
     }
+    /**
+     * 특정 수확 인사이트의 상세 정보 및 일자별(1일차, 2일차...) 피드백 타임라인을 조회합니다.
+     *
+     * <p><b>[보안 및 비즈니스 목적]</b><br>
+     * 타인의 경작지 관리 페이지(/cultivations/{id})는 보안상 멤버(OWNER, MANAGER)만 접근할 수 있습니다.<br>
+     * 따라서 다른 사용자가 우수 재배 사례(TOP 등급 등)를 벤치마킹할 수 있도록,<br>
+     * 기기 시리얼 등 민감정보는 제외하고 순수 농업 데이터(일별 센서 수치 및 일일 AI 피드백)만<br>
+     * 안전하게 추출하여 반환하는 공유 창구 역할을 합니다.</p>
+     *
+     * <p><b>[프론트엔드 활용]</b><br>
+     * 프론트엔드의 우수 재배 사례 상세 모달/패널에서 전달받은 {@code dailyRecords}를 바탕으로<br>
+     * 1일차부터 수확일까지의 일자별 센서 환경과 AI 리포트를 아코디언/타임라인 형태로 렌더링합니다.</p>
+     *
+     * @param insightId 조회할 인사이트의 PK ID
+     * @return 인사이트 요약 정보 및 일자별 일일 피드백 목록이 포함된 DTO
+     * @throws IllegalArgumentException 해당 ID의 인사이트가 존재하지 않는 경우
+     */
+    @Transactional(readOnly = true)
+    public InsightDetailResponse getInsightDetail(Long insightId) {
+        Insight insight = insightRepository.findById(insightId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 인사이트입니다. ID: " + insightId));
 
+        List<DailyFeedback> dailyFeedbacks = dailyFeedbackRepository
+                .findAllByCultivationId(insight.getCultivationId());
 
+        List<InsightDetailResponse.DailyRecordDto> dailyRecords = IntStream.range(0, dailyFeedbacks.size())
+                .mapToObj(i -> {
+                    DailyFeedback df = dailyFeedbacks.get(i);
+                    JsonNode snapshot = df.getContextSnapshot();
+                    return new InsightDetailResponse.DailyRecordDto(
+                            i + 1, // dayNumber (1일차, 2일차...)
+                            df.getFeedbackDate().toString(),
+                            extractSensorAvgFromSnapshot(snapshot, TEMPERATURE, insight.getAvgTemperature()),
+                            extractSensorAvgFromSnapshot(snapshot, HUMIDITY, insight.getAvgHumidity()),
+                            extractSensorAvgFromSnapshot(snapshot, CO2, insight.getAvgCo2()),
+                            extractSensorAvgFromSnapshot(snapshot, LIGHT, insight.getAvgLight()),
+                            df.getContent()
+                    );
+                })
+                .toList();
 
-    // 인사이트 상세 조회(일일 피드백 완성 후 5개 중 하나 눌렀을 때 일일 피드백 기록 보여주는 기능 구현)
+        return InsightDetailResponse.of(insight, dailyRecords);
+    }
+
+    // 사용자가 온도, 습도, co2, 조도 외에 다른 센서 추가해서 키웠는지 감지해서 요약에 반영하기 위해 추가
+    private String buildAdditionalSensorsText(CultivationClient client, Long userId, Long cultivationId) {
+        try {
+            CultivationSensorListResponse sensorList = client.getAllCultivationSensor(userId, cultivationId);
+            if (sensorList == null || sensorList.sensors() == null) {
+                return "- 센서 장착 구성: 필수 4대 기본 환경 센서(온도, 습도, CO2, 조도) 중심으로 운영";
+            }
+
+            Set<String> standardTypes = Set.of(TEMPERATURE, HUMIDITY, CO2, LIGHT);
+            List<String> additionals = sensorList.sensors().stream()
+                    .filter(s -> s.sensorTypes() != null)
+                    .flatMap(s -> s.sensorTypes().stream())
+                    .map(st -> st.type().toUpperCase())
+                    .filter(type -> !standardTypes.contains(type))
+                    .distinct()
+                    .toList();
+
+            // 기본 센서만으로 운영한 경우
+            if (additionals.isEmpty()) {
+                return "- 센서 장착 구성: 필수 4대 기본 환경 센서(온도, 습도, CO2, 조도) 기반의 표준 환경 제어로 안정적 운영";
+            }
+
+            // 추가 센서를 도입한 경우
+            String additionalListText = String.join(", ", additionals);
+            return String.format("- 센서 장착 구성: 필수 4대 기본 센서 외에 [%s] 센서를 추가 장착하여 한층 더 정밀하고 다각적인 환경 관리 수행", additionalListText);
+        } catch (Exception e) {
+            log.warn("센서 목록 조회 실패 (cultivationId={}), 기본 센서 텍스트 사용", cultivationId, e);
+            return "- 센서 장착 구성: 필수 4대 기본 환경 센서(온도, 습도, CO2, 조도) 중심으로 운영";
+        }
+    }
+
+    // 일일 피드백 종합 분석
+    private DailyStatsSummary analyzeDailyFeedbacks(List<DailyFeedback> dailyFeedbacks) {
+        if (dailyFeedbacks == null || dailyFeedbacks.isEmpty()) {
+            return new DailyStatsSummary("생육 모드로 안정 관리", 0, 0, 0, "병충해 없음(정상)", "전 기간 안정 유지", "일일 피드백 이력 없음");
+        }
+
+        NotificationAccumulator accumulator = new NotificationAccumulator();
+        String modeSwitchInfo = "생육기 모드 유지";
+        boolean diseaseDetected = false;
+        StringBuilder excerpts = new StringBuilder();
+
+        for (int i = 0; i < dailyFeedbacks.size(); i++) {
+            DailyFeedback df = dailyFeedbacks.get(i);
+            JsonNode snapshot = df.getContextSnapshot();
+
+            modeSwitchInfo = detectModeSwitch(snapshot, i + 1, df.getFeedbackDate().toString(), modeSwitchInfo);
+            accumulator.accumulate(snapshot);
+            diseaseDetected = diseaseDetected || isDiseaseDetected(snapshot);
+            appendSampleSummary(excerpts, df, i, dailyFeedbacks.size());
+        }
+
+        String diseaseStatus = diseaseDetected ? "재배 중 병충해 의심 징후 감지됨" : "재배 전 기간 병충해 0건(건강 상태 유지)";
+        String stableDays = String.format("총 %d일 중 %d일간 안정 유지",
+                dailyFeedbacks.size(), Math.max(1, dailyFeedbacks.size() - (accumulator.thresholdAlerts > 0 ? 1 : 0)));
+
+        return new DailyStatsSummary(
+                modeSwitchInfo, accumulator.totalEvents, accumulator.thresholdAlerts,
+                accumulator.actuatorSuccess, diseaseStatus, stableDays, excerpts.toString()
+        );
+    }
+
+    // 모드 전환 감지
+    private String detectModeSwitch(JsonNode snapshot, int dayNumber, String date, String currentInfo) {
+        if (snapshot == null || !currentInfo.startsWith("생육기")) {
+            return currentInfo;
+        }
+
+        String mode = snapshot.path("cultivationDetail").path("mode").asText(snapshot.path("mode").asText(""));
+        if ("HARVEST".equalsIgnoreCase(mode)) {
+            return String.format("생육 %d일차(%s)에 수확 모드로 전환", dayNumber, date);
+        }
+
+        return currentInfo;
+    }
+
+    // 비전 병충해 감지
+    private boolean isDiseaseDetected(JsonNode snapshot) {
+        if (snapshot != null && snapshot.has("visionAnalysis")) {
+            String status = snapshot.path("visionAnalysis").path("status").asText("");
+            return "DISEASE_SUSPECTED".equalsIgnoreCase(status);
+        }
+        return false;
+    }
+
+    // 샘플 요약 텍스트 추가 헬퍼
+    private void appendSampleSummary(StringBuilder sb, DailyFeedback df, int index, int totalSize) {
+        if (index == 0 || index == totalSize / 2 || index == totalSize - 1) {
+            String content = df.getContent();
+            String brief = (content != null && content.length() > 80) ? content.substring(0, 80) + "..." : content;
+            sb.append(String.format(" - %d일차(%s): %s%n", index + 1, df.getFeedbackDate(), brief));
+        }
+    }
+
+    // 스냅샷에서 일별 센서 평균값 추출
+    private BigDecimal extractSensorAvgFromSnapshot(JsonNode snapshot, String sensorType, BigDecimal fallback) {
+        if (snapshot == null || !snapshot.has("sensorStatistics")) return fallback;
+        JsonNode stats = snapshot.get("sensorStatistics");
+        if (stats.has(sensorType) && stats.get(sensorType).has("average")) {
+            return BigDecimal.valueOf(stats.get(sensorType).get("average").asDouble()).setScale(2, RoundingMode.HALF_UP);
+        }
+        return fallback;
+    }
+
+    // 알림 및 제어 누적용 클래스
+    private static class NotificationAccumulator {
+        int totalEvents = 0;
+        int thresholdAlerts = 0;
+        int actuatorSuccess = 0;
+
+        void accumulate(JsonNode snapshot) {
+            if (snapshot != null && snapshot.has("notificationMetrics")) {
+                JsonNode nm = snapshot.get("notificationMetrics");
+                this.totalEvents += nm.path("totalEvents").asInt(0);
+                this.thresholdAlerts += nm.path("ruleEngineCooldownThresholdEvents").asInt(0);
+                this.actuatorSuccess += nm.path("actuatorControlSuccessEvents").asInt(0);
+            }
+        }
+    }
 }
