@@ -75,10 +75,10 @@ class SensorValidationServiceTest {
         given(cultivationClient.getCultivation(USER_ID, CULTIVATION_ID))
                 .willReturn(new CultivationDetailResponse(CULTIVATION_ID, MUSHROOM_ID, "ACTIVE", "AUTO", LocalDateTime.now()));
 
-        given(mushCsvReader.readMushroomCsv())
-                .willReturn(List.of(new MushroomCsvDto(MUSHROOM_ID, "느타리버섯", "title", "content")));
+        lenient().when(mushCsvReader.readMushroomCsv())
+                .thenReturn(List.of(new MushroomCsvDto(MUSHROOM_ID, "느타리버섯", "title", "content")));
 
-        given(redisTemplate.<String, String>opsForHash()).willReturn(hashOps);
+        lenient().when(redisTemplate.<String, String>opsForHash()).thenReturn(hashOps);
     }
 
     @Test
@@ -234,5 +234,37 @@ class SensorValidationServiceTest {
         // AiAnalysisFailedException으로 덮어씌워지지 않고 GeminiAllKeysExhaustedException이 그대로 전파되는지 검증
         org.junit.jupiter.api.Assertions.assertThrows(site.yesaido.ai_server.exception.GeminiAllKeysExhaustedException.class,
                 () -> sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request));
+    }
+
+    @Test
+    @DisplayName("DB에 기준 임계값이 존재할 때 AI 호출 없이 DB 기준값 적용 검증")
+    void validate_DbThresholdMatched_Success() {
+        site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse mushroomRef = createMushroomRef();
+        site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse refList =
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse(List.of(mushroomRef));
+
+        given(cultivationClient.getMushroomReference()).willReturn(refList);
+
+        SensorValidationRequest request = new SensorValidationRequest(
+                10L, "TEMPERATURE", "°C", BigDecimal.valueOf(19), BigDecimal.valueOf(21)
+        );
+
+        SensorValidationResponse response = sensorValidationService.validateSensorThreshold(USER_ID, CULTIVATION_ID, request);
+
+        assertThat(response.isValid()).isTrue();
+        assertThat(response.recommendedMin()).isEqualByComparingTo(BigDecimal.valueOf(18));
+        assertThat(response.recommendedMax()).isEqualByComparingTo(BigDecimal.valueOf(22));
+    }
+
+    private site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse createMushroomRef() {
+        site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse sensorType =
+                new site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse(10L, "TEMPERATURE", "°C");
+        site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse threshold =
+                new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse(
+                        1L, sensorType, "GROWTH", BigDecimal.valueOf(18), BigDecimal.valueOf(22)
+                );
+        return new site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse(
+                MUSHROOM_ID, "느타리버섯", "Oyster", "Pleurotus", List.of(threshold)
+        );
     }
 }
