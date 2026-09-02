@@ -1,6 +1,5 @@
 # AI 일일 피드백 - Cultivation 등록 사진 통합 테스트
 #
-# 이 파일은 로컬 이미지를 업로드하지 않습니다.
 # Cultivation에 이미 등록된 사진을 다음 실제 흐름으로 검증합니다.
 #
 # Cultivation 일별 사진 조회 및 Presigned URL 발급
