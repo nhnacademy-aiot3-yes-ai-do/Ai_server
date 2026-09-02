@@ -624,8 +624,8 @@ class PresignedImageDownloaderTest {
     ) {
         ImageDownloadException exception =
                 catchThrowableOfType(
-                        () -> downloader.downloadAsMultipart(photo),
-                        ImageDownloadException.class
+                        ImageDownloadException.class,
+                        () -> downloader.downloadAsMultipart(photo)
                 );
 
         assertExceptionReason(
@@ -670,11 +670,11 @@ class PresignedImageDownloaderTest {
     ) {
         IllegalStateException exception =
                 catchThrowableOfType(
+                        IllegalStateException.class,
                         () -> new PresignedImageDownloader(
                                 restClient,
                                 configuredOrigin
-                        ),
-                        IllegalStateException.class
+                        )
                 );
 
         assertThat(exception.getMessage())

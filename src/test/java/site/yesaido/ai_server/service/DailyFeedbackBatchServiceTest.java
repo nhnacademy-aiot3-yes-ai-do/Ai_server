@@ -259,12 +259,15 @@ class DailyFeedbackBatchServiceTest {
         assertThat(result.results())
                 .isEmpty();
 
+        CultivationResult createdResult =
+                CultivationResult.created(
+                        FIRST_CULTIVATION_ID
+                );
+        List<CultivationResult> immutableResults =
+                result.results();
+
         assertThatThrownBy(
-                () -> result.results().add(
-                        CultivationResult.created(
-                                FIRST_CULTIVATION_ID
-                        )
-                )
+                () -> immutableResults.add(createdResult)
         ).isInstanceOf(
                 UnsupportedOperationException.class
         );
