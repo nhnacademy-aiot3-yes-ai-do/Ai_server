@@ -39,29 +39,35 @@ public class DailyFeedbackOutputValidator {
     private static final Pattern EXTERNAL_RESOURCE_PATTERN = Pattern.compile(
             "(?:https?|s3)://|x-amz-|x-goog-", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern SIGNED_QUERY_PARAMETER_PATTERN =
-            Pattern.compile(
-                    "(?<![A-Za-z0-9_-])"
-                            + "(?:signature|credential)"
-                            + "\\s*(?:=|%3d)",
-                    Pattern.CASE_INSENSITIVE
+    private static final String SIGNED_PARAMETER_PREFIX =
+            "(?<![A-Z0-9_-])";
+
+    private static final String SIGNED_PARAMETER_SUFFIX =
+            "\\s*(?:=|%3D)";
+
+    private static final List<Pattern> SIGNED_QUERY_PARAMETER_PATTERNS =
+            List.of(
+                    signedParameterPattern("signature"),
+                    signedParameterPattern("credential")
             );
 
-    private static final Pattern INTERNAL_FIELD_PATTERN =
-            Pattern.compile(
-                    "(?<![A-Za-z0-9])(?:"
-                            + "cultivation[_-]?(?:photo[_-]?)?id"
-                            + "|mushroom[_-]?id"
-                            + "|threshold[_-]?id"
-                            + "|sensor[_-]?type[_-]?id"
-                            + "|growth[_-]?record[_-]?id"
-                            + "|photo[_-]?id"
-                            + "|(?:owner[_-]?)?user[_-]?id"
-                            + "|presigned[_-]?url"
-                            + "|object[_-]?key"
-                            + ")(?![A-Za-z0-9])",
-                    Pattern.CASE_INSENSITIVE
-            );
+    private static final String INTERNAL_FIELD_PREFIX =
+            "(?<![A-Z0-9])";
+
+    private static final String INTERNAL_FIELD_SUFFIX =
+            "(?![A-Z0-9])";
+
+    private static final List<Pattern> INTERNAL_FIELD_PATTERNS = List.of(
+            internalFieldPattern("cultivation[_-]?(?:photo[_-]?)?id"),
+            internalFieldPattern("mushroom[_-]?id"),
+            internalFieldPattern("threshold[_-]?id"),
+            internalFieldPattern("sensor[_-]?type[_-]?id"),
+            internalFieldPattern("growth[_-]?record[_-]?id"),
+            internalFieldPattern("photo[_-]?id"),
+            internalFieldPattern("(?:owner[_-]?)?user[_-]?id"),
+            internalFieldPattern("presigned[_-]?url"),
+            internalFieldPattern("object[_-]?key")
+    );
 
     /**
      * 일일 피드백의 저장 가능 여부를 검사하고 문자열을 정규화합니다.
@@ -108,13 +114,44 @@ public class DailyFeedbackOutputValidator {
         }
 
         if (EXTERNAL_RESOURCE_PATTERN.matcher(output).find()
-                || SIGNED_QUERY_PARAMETER_PATTERN.matcher(output).find()) {
+                || containsMatch(SIGNED_QUERY_PARAMETER_PATTERNS, output)) {
             throw new AiAnalysisFailedException("일일 피드백 응답에 외부 주소 또는 서명정보가 포함되어 있습니다.");
         }
 
-        if (INTERNAL_FIELD_PATTERN.matcher(output).find()) {
+        if (containsMatch(INTERNAL_FIELD_PATTERNS, output)) {
             throw new AiAnalysisFailedException("일일 피드백 응답에 노출할 수 없는 내부 필드명이 포함되어 있습니다.");
         }
+    }
+
+    private static Pattern signedParameterPattern(String parameterName) {
+        return Pattern.compile(
+                SIGNED_PARAMETER_PREFIX
+                        + parameterName
+                        + SIGNED_PARAMETER_SUFFIX,
+                Pattern.CASE_INSENSITIVE
+        );
+    }
+
+    private static Pattern internalFieldPattern(String fieldExpression) {
+        return Pattern.compile(
+                INTERNAL_FIELD_PREFIX
+                        + fieldExpression
+                        + INTERNAL_FIELD_SUFFIX,
+                Pattern.CASE_INSENSITIVE
+        );
+    }
+
+    private static boolean containsMatch(
+            List<Pattern> patterns,
+            String output
+    ) {
+        for (Pattern pattern : patterns) {
+            if (pattern.matcher(output).find()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private List<Integer> collectAndValidateHeadings(String[] lines) {

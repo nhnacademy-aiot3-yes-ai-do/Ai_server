@@ -202,31 +202,9 @@ class DailyFeedbackPromptContextSanitizerTest {
     }
 
     @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource("sensitiveFieldNameCases")
-    @DisplayName("명시된 민감 필드는 표기 그대로 제거한다")
+    @MethodSource("allSensitiveFieldNameCases")
+    @DisplayName("민감 필드는 표기 형식과 관계없이 제거한다")
     void removesSensitiveFieldNames(
-            String sensitiveFieldName
-    ) {
-        // 준비
-        ObjectNode original = NODE_FACTORY.objectNode();
-        original.put("safeSibling", "KEEP_ME");
-        original.put(sensitiveFieldName, REMOVED_VALUE);
-
-        // 실행
-        JsonNode sanitized = sanitizer.sanitize(original);
-
-        // 검증
-        assertThat(sanitized.has(sensitiveFieldName)).isFalse();
-        assertThat(sanitized.path("safeSibling").asText())
-                .isEqualTo("KEEP_ME");
-        assertThat(sanitized.toString())
-                .doesNotContain(REMOVED_VALUE);
-    }
-
-    @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource("normalizedSensitiveFieldNameCases")
-    @DisplayName("snake_case와 kebab-case 민감 필드도 제거한다")
-    void removesNormalizedSensitiveFieldNames(
             String sensitiveFieldName
     ) {
         // 준비
@@ -700,6 +678,13 @@ class DailyFeedbackPromptContextSanitizerTest {
                         "boolean",
                         NODE_FACTORY.booleanNode(true)
                 )
+        );
+    }
+
+    private static Stream<Arguments> allSensitiveFieldNameCases() {
+        return Stream.concat(
+                sensitiveFieldNameCases(),
+                normalizedSensitiveFieldNameCases()
         );
     }
 

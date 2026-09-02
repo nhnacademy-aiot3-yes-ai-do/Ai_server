@@ -448,11 +448,7 @@ class VisionRelayServiceTest {
     }
 
     @ParameterizedTest(name = "[{index}] {0}")
-    @MethodSource({
-             "invalidRequiredNumericResults",
-             "invalidStructuredResults",
-             "invalidHealthProbabilityCombinations"
-    })
+    @MethodSource("invalidResults")
     @DisplayName("유효하지 않은 Result 계약을 가진 응답은 거부한다")
     void rejectInvalidResults(
             String description,
@@ -901,10 +897,8 @@ class VisionRelayServiceTest {
         when(
                 growthRecordRepository
                         .findByCultivationPhotoId(PHOTO_ID)
-        ).thenReturn(
-                Optional.empty(),
-                recordAfterConflict
-        );
+        ).thenReturn(Optional.empty())
+                .thenReturn(recordAfterConflict);
 
         when(
                 presignedImageDownloader
@@ -1495,6 +1489,16 @@ class VisionRelayServiceTest {
                                 )
                         )
                 );
+    }
+
+    private static Stream<Arguments> invalidResults() {
+        return Stream.concat(
+                Stream.concat(
+                        invalidRequiredNumericResults(),
+                        invalidStructuredResults()
+                ),
+                invalidHealthProbabilityCombinations()
+        );
     }
 
     private static Stream<Arguments> invalidRequiredNumericResults() {

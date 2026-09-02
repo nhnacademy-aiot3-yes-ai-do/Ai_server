@@ -198,6 +198,42 @@ class DailyFeedbackGenerationServiceTest {
         String result = service.generate(context);
 
         // 검증
+        CapturedMessages messages =
+                assertGeminiResultAndInteractions(
+                        result,
+                        geminiCall
+                );
+
+        String sanitizedContextJson =
+                extractSanitizedContextJson(
+                        messages.userMessage()
+                );
+
+        JsonNode sanitizedContext =
+                objectMapper.readTree(sanitizedContextJson);
+
+        assertSanitizedContextValues(
+                sanitizedContext,
+                sanitizedContextJson
+        );
+
+        assertSensitiveContextDataRemoved(
+                sanitizedContext,
+                sanitizedContextJson
+        );
+
+        assertPromptIsolationAndOriginalContextUnchanged(
+                messages,
+                sanitizedContextJson,
+                context,
+                originalContextJson
+        );
+    }
+
+    private CapturedMessages assertGeminiResultAndInteractions(
+            String result,
+            ModelCallMock geminiCall
+    ) {
         assertThat(result)
                 .isEqualTo(validFeedback())
                 .doesNotContain("\r");
@@ -210,17 +246,13 @@ class DailyFeedbackGenerationServiceTest {
                 ollamaChatClient
         );
 
-        CapturedMessages messages =
-                captureMessages(geminiCall);
+        return captureMessages(geminiCall);
+    }
 
-        String sanitizedContextJson =
-                extractSanitizedContextJson(
-                        messages.userMessage()
-                );
-
-        JsonNode sanitizedContext =
-                objectMapper.readTree(sanitizedContextJson);
-
+    private void assertSanitizedContextValues(
+            JsonNode sanitizedContext,
+            String sanitizedContextJson
+    ) {
         assertThat(
                 sanitizedContext.path("feedbackDate").asText()
         ).isEqualTo(FEEDBACK_DATE.toString());
@@ -349,7 +381,12 @@ class DailyFeedbackGenerationServiceTest {
                         .path("hasVisionAnalysis")
                         .booleanValue()
         ).isFalse();
+    }
 
+    private void assertSensitiveContextDataRemoved(
+            JsonNode sanitizedContext,
+            String sanitizedContextJson
+    ) {
         assertThat(sanitizedContext.has("cultivationId"))
                 .isFalse();
 
@@ -397,7 +434,14 @@ class DailyFeedbackGenerationServiceTest {
                         "https://",
                         "s3://"
                 );
+    }
 
+    private void assertPromptIsolationAndOriginalContextUnchanged(
+            CapturedMessages messages,
+            String sanitizedContextJson,
+            DailyFeedbackContext context,
+            String originalContextJson
+    ) throws JsonProcessingException {
         assertThat(messages.systemMessage())
                 .contains("## 오늘의 환경 요약")
                 .doesNotContain(
@@ -892,7 +936,7 @@ class DailyFeedbackGenerationServiceTest {
                 userMessage.indexOf(CONTEXT_JSON_END);
 
         assertThat(startMarkerIndex)
-                .isGreaterThanOrEqualTo(0);
+                .isNotNegative();
 
         assertThat(endMarkerIndex)
                 .isGreaterThan(startMarkerIndex);

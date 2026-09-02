@@ -57,12 +57,26 @@ public class DailyVisionAnalysisService {
      * @throws IllegalStateException 외부 사진 목록 응답 계약이 잘못된 경우
      */
     public Map<Long, DailyCultivationPhotoResponse> fetchPhotosByCultivationId(LocalDate targetDate) {
+        validateTargetDate(targetDate);
+
+        DailyCultivationPhotoListResponse response =
+                cultivationClient.getDailyCultivationPhotos(targetDate);
+
+        validatePhotoListResponse(targetDate, response);
+
+        return indexPhotosByCultivationId(targetDate, response);
+    }
+
+    private static void validateTargetDate(LocalDate targetDate) {
         if (targetDate == null) {
             throw new IllegalArgumentException("targetDate는 null일 수 없습니다.");
         }
+    }
 
-        DailyCultivationPhotoListResponse response = cultivationClient.getDailyCultivationPhotos(targetDate);
-
+    private static void validatePhotoListResponse(
+            LocalDate targetDate,
+            DailyCultivationPhotoListResponse response
+    ) {
         if (response == null) {
             throw new IllegalStateException("일일 경작 사진 목록 응답이 null입니다: targetDate=%s".formatted(targetDate));
         }
@@ -75,34 +89,17 @@ public class DailyVisionAnalysisService {
         if (response.photos() == null) {
             throw new IllegalStateException("일일 경작 사진 목록이 null입니다: targetDate=%s".formatted(targetDate));
         }
+    }
 
+    private static Map<Long, DailyCultivationPhotoResponse> indexPhotosByCultivationId(
+            LocalDate targetDate,
+            DailyCultivationPhotoListResponse response
+    ) {
         TreeMap<Long, DailyCultivationPhotoResponse> photosByCultivationId = new TreeMap<>();
         Set<Long> photoIds = new HashSet<>();
 
         for (DailyCultivationPhotoResponse photo : response.photos()) {
-            if (photo == null) {
-                throw new IllegalStateException("일일 경작 사진 목록에 null 요소가 있습니다: targetDate=%s".formatted(targetDate));
-            }
-
-            if (photo.cultivationId() == null || photo.cultivationId() <= 0) {
-                throw new IllegalStateException("사진의 cultivationId가 유효하지 않습니다: targetDate=%s, cultivationId=%s"
-                        .formatted(targetDate, photo.cultivationId()));
-            }
-
-            if (photo.photoId() == null || photo.photoId() <= 0) {
-                throw new IllegalStateException("사진의 photoId가 유효하지 않습니다: targetDate=%s, cultivationId=%s, photoId=%s"
-                        .formatted(targetDate, photo.cultivationId(), photo.photoId()));
-            }
-
-            if (photo.presignedUrl() == null || photo.presignedUrl().isBlank()) {
-                throw new IllegalStateException("사진의 Presigned URL이 유효하지 않습니다: targetDate=%s, cultivationId=%s, photoId=%s"
-                        .formatted(targetDate, photo.cultivationId(), photo.photoId()));
-            }
-
-            if (photo.expiresAt() == null) {
-                throw new IllegalStateException("사진의 URL 만료 시각이 null입니다: targetDate=%s, cultivationId=%s, photoId=%s"
-                        .formatted(targetDate, photo.cultivationId(), photo.photoId()));
-            }
+            validatePhoto(targetDate, photo);
 
             if (photosByCultivationId.containsKey(photo.cultivationId())) {
                 throw new IllegalStateException("같은 경작지의 사진이 중복되었습니다: targetDate=%s, cultivationId=%s"
@@ -118,6 +115,35 @@ public class DailyVisionAnalysisService {
         }
 
         return Collections.unmodifiableMap(photosByCultivationId);
+    }
+
+    private static void validatePhoto(
+            LocalDate targetDate,
+            DailyCultivationPhotoResponse photo
+    ) {
+        if (photo == null) {
+            throw new IllegalStateException("일일 경작 사진 목록에 null 요소가 있습니다: targetDate=%s".formatted(targetDate));
+        }
+
+        if (photo.cultivationId() == null || photo.cultivationId() <= 0) {
+            throw new IllegalStateException("사진의 cultivationId가 유효하지 않습니다: targetDate=%s, cultivationId=%s"
+                    .formatted(targetDate, photo.cultivationId()));
+        }
+
+        if (photo.photoId() == null || photo.photoId() <= 0) {
+            throw new IllegalStateException("사진의 photoId가 유효하지 않습니다: targetDate=%s, cultivationId=%s, photoId=%s"
+                    .formatted(targetDate, photo.cultivationId(), photo.photoId()));
+        }
+
+        if (photo.presignedUrl() == null || photo.presignedUrl().isBlank()) {
+            throw new IllegalStateException("사진의 Presigned URL이 유효하지 않습니다: targetDate=%s, cultivationId=%s, photoId=%s"
+                    .formatted(targetDate, photo.cultivationId(), photo.photoId()));
+        }
+
+        if (photo.expiresAt() == null) {
+            throw new IllegalStateException("사진의 URL 만료 시각이 null입니다: targetDate=%s, cultivationId=%s, photoId=%s"
+                    .formatted(targetDate, photo.cultivationId(), photo.photoId()));
+        }
     }
 
     /**

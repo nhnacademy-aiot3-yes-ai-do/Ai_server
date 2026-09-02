@@ -39,36 +39,72 @@ public record DailyVisionAnalysisSnapshot(
 ) {
 
     public DailyVisionAnalysisSnapshot {
+        validateCultivationId(cultivationId);
+
+        if (!hasVisionAnalysis) {
+            validateAnalysisFieldsAreAbsent(
+                    growthRecordId,
+                    cultivationPhotoId,
+                    analysisData,
+                    analyzedAt
+            );
+        } else {
+            analysisData = validateAndCopyAnalysisFields(
+                    growthRecordId,
+                    cultivationPhotoId,
+                    analysisData,
+                    analyzedAt
+            );
+        }
+    }
+
+    private static void validateCultivationId(Long cultivationId) {
         if (cultivationId == null || cultivationId <= 0) {
             throw new IllegalArgumentException("cultivationId는 null이 아니며 0보다 커야 합니다.");
         }
+    }
 
-        if(!hasVisionAnalysis) {
-            if(growthRecordId != null || cultivationPhotoId != null || analysisData != null || analyzedAt != null) {
-                throw new IllegalArgumentException("hasVisionAnalysis가 false이면 모든 분석 필드는 null이여야 합니다.");
-            }
-        } else  {
-            if( growthRecordId == null || growthRecordId <= 0) {
-                throw new IllegalArgumentException("Vision분석이 있으면 growthRecordId는 0보다 커야 합니다.");
-            }
-            if (cultivationPhotoId == null || cultivationPhotoId <= 0) {
-                throw new IllegalArgumentException("Vision 분석이 있으면 cultivationPhotoId는 0보다 커야 합니다.");
-            }
-
-            if (analysisData == null) {
-                throw new IllegalArgumentException("Vision 분석이 있으면 analysisData는 null일 수 없습니다.");
-            }
-
-            if (!analysisData.isObject()) {
-                throw new IllegalArgumentException("analysisData는 JSON object여야 합니다.");
-            }
-            if (analyzedAt == null) {
-                throw new IllegalArgumentException("Vision 분석이 있으면 analyzedAt은 null일 수 없습니다.");
-            }
-
-            analysisData = analysisData.deepCopy();
-
+    private static void validateAnalysisFieldsAreAbsent(
+            Long growthRecordId,
+            Long cultivationPhotoId,
+            JsonNode analysisData,
+            LocalDateTime analyzedAt
+    ) {
+        if (growthRecordId != null
+                || cultivationPhotoId != null
+                || analysisData != null
+                || analyzedAt != null) {
+            throw new IllegalArgumentException("hasVisionAnalysis가 false이면 모든 분석 필드는 null이여야 합니다.");
         }
+    }
+
+    private static JsonNode validateAndCopyAnalysisFields(
+            Long growthRecordId,
+            Long cultivationPhotoId,
+            JsonNode analysisData,
+            LocalDateTime analyzedAt
+    ) {
+        if (growthRecordId == null || growthRecordId <= 0) {
+            throw new IllegalArgumentException("Vision분석이 있으면 growthRecordId는 0보다 커야 합니다.");
+        }
+
+        if (cultivationPhotoId == null || cultivationPhotoId <= 0) {
+            throw new IllegalArgumentException("Vision 분석이 있으면 cultivationPhotoId는 0보다 커야 합니다.");
+        }
+
+        if (analysisData == null) {
+            throw new IllegalArgumentException("Vision 분석이 있으면 analysisData는 null일 수 없습니다.");
+        }
+
+        if (!analysisData.isObject()) {
+            throw new IllegalArgumentException("analysisData는 JSON object여야 합니다.");
+        }
+
+        if (analyzedAt == null) {
+            throw new IllegalArgumentException("Vision 분석이 있으면 analyzedAt은 null일 수 없습니다.");
+        }
+
+        return analysisData.deepCopy();
     }
 
     /**
