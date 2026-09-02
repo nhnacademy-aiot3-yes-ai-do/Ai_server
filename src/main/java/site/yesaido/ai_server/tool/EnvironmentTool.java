@@ -13,7 +13,6 @@ import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -91,17 +90,19 @@ public class EnvironmentTool {
             SensorTypeAverageListResponse avgSensors = cultivationClient.getSensorValuesAverage(cultivationId, userId);
             EnvironmentComplianceResponse compliance = cultivationClient.getEnvironmentCompliance(cultivationId, userId);
 
-            StringBuilder sb = new StringBuilder();
-            sb.append(String.format("[재배지 기본 정보]%n- 재배지 ID: %d | 버섯 ID: %d | 모드: %s%n%n",
-                    cult.cultivationId(), cult.mushroomId(), cult.mode()));
-
-            sb.append("[실시간 센서 평균값]\n");
-            sb.append(formatSensorAverages(avgSensors));
-
-            sb.append("[환경 적정 유지율]\n");
-            sb.append(formatCompliance(compliance));
-
-            return sb.toString();
+            return """                                                                                                                                                                                                                                           
+            [재배지 기본 정보]
+            - 재배지 ID: %d | 버섯 ID: %d | 모드: %s
+            
+            [실시간 센서 평균값]
+            %s
+            [환경 적정 유지율]
+            %s
+            """.formatted(
+                    cult.cultivationId(), cult.mushroomId(), cult.mode(),
+                    formatSensorAverages(avgSensors),
+                    formatCompliance(compliance)
+            );
 
         } catch (feign.FeignException.NotFound e) {
             log.warn("요청한 재배지 정보를 찾을 수 없음: {}", e.getMessage());
