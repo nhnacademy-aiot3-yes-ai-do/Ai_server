@@ -70,6 +70,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
 
 feign:
   client:
@@ -83,5 +87,13 @@ feign:
 image-download:
   allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN}
 
-server:
-  port: 8080
+daily-feedback:
+  outbox:
+    batch-size: ${DAILY_FEEDBACK_OUTBOX_BATCH_SIZE:20}
+    max-attempts: ${DAILY_FEEDBACK_OUTBOX_MAX_ATTEMPTS:3}
+    initial-backoff: ${DAILY_FEEDBACK_OUTBOX_INITIAL_BACKOFF:30s}
+    max-backoff: ${DAILY_FEEDBACK_OUTBOX_MAX_BACKOFF:5m}
+    publisher-confirm-timeout: ${DAILY_FEEDBACK_PUBLISHER_CONFIRM_TIMEOUT:5s}
+    stale-timeout: ${DAILY_FEEDBACK_OUTBOX_STALE_TIMEOUT:2m}
+    relay-interval: ${DAILY_FEEDBACK_OUTBOX_RELAY_INTERVAL:5s}
+    recovery-interval: ${DAILY_FEEDBACK_OUTBOX_RECOVERY_INTERVAL:1m}

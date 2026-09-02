@@ -2,15 +2,25 @@ package site.yesaido.ai_server.rabbitmq;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.AmqpTimeoutException;
+import org.springframework.amqp.core.AmqpMessageReturnedException;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
+import site.yesaido.ai_server.config.DailyFeedbackOutboxProperties;
 import site.yesaido.ai_server.rabbitmq.event.AiEvent;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
 
@@ -21,38 +31,104 @@ import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
  * 이벤트 ID와 발생 시각을 포함한 이벤트 내용은 호출자가 미리
  * 확정하여 전달해야 합니다.</p>
  *
- * <p>일일 피드백 이벤트 발행 실패는 이후 재시도 계층이 인식할 수
- * 있도록 상위 호출자에게 그대로 전파합니다. 피드백 본문과 URL,
- * 전체 이벤트 객체는 로그에 기록하지 않습니다.</p>
+ * <p>단순히 {@link RabbitTemplate#convertAndSend(String, String, Object)}
+ * 호출이 반환된 것만으로는 Broker 수신과 Queue 라우팅 성공이
+ * 보장되지 않습니다. 일일 피드백 이벤트는 Broker Confirm이 ACK이고
+ * {@link CorrelationData#getReturned()}가 null인 경우에만 성공으로
+ * 처리합니다.</p>
+ *
+ * <p>확인 시간 초과, NACK 또는 반환된 메시지는 Outbox Relay가
+ * 재시도할 수 있도록 예외로 전파합니다. 피드백 본문, URL,
+ * 반환된 메시지 본문과 Confirm 사유는 로그에 기록하지 않습니다.</p>
+ *
+ * <p>전달 보장은 Outbox 재시도와 Notification Server의
+ * {@code eventId} 멱등 처리를 결합한 {@code at-least-once}
+ * 방식입니다.</p>
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class AiNotificationProducer {
 
+    private static final String CONFIRM_INTERRUPTED_MESSAGE = "일일 피드백 이벤트 발행 확인 대기가 중단되었습니다.";
+
+    private static final String CONFIRM_TIMEOUT_MESSAGE = "일일 피드백 이벤트 발행 확인 시간이 초과되었습니다.";
+
+    private static final String CONFIRM_FAILED_MESSAGE = "일일 피드백 이벤트 발행 확인에 실패했습니다.";
+
+    private static final String MESSAGE_RETURNED_MESSAGE = "일일 피드백 이벤트가 대상 Queue로 라우팅되지 않았습니다.";
+
+    private static final String BROKER_NOT_ACKNOWLEDGED_MESSAGE = "RabbitMQ Broker가 일일 피드백 이벤트 발행을 확인하지 않았습니다.";
+
     private final RabbitTemplate rabbitTemplate;
 
+    private final DailyFeedbackOutboxProperties dailyFeedbackOutboxProperties;
+
     /**
-     * 완성된 일일 피드백 생성 이벤트를 RabbitMQ로 전송합니다.
+     * 완성된 일일 피드백 이벤트를 발행하고 Broker Confirm과
+     * Queue 라우팅 결과를 확인합니다.
      *
-     * <p>{@code eventId}와 {@code occurredAt}은 호출자가 확정한 값을
-     * 그대로 사용합니다. 전송 중 발생한 예외는 이 메서드에서
-     * 처리하거나 숨기지 않고 재시도를 담당할 상위 계층으로
-     * 전파합니다.</p>
+     * <p>발행 시도마다 고유한 {@code publicationAttemptId}로
+     * {@link CorrelationData}를 생성합니다. 동일 이벤트를 재시도할 때도
+     * 이전 timeout 발행의 확인 결과와 충돌하지 않도록 이벤트 ID만
+     * Correlation ID로 사용하지 않습니다.</p>
      *
-     * <p>성공 로그에는 이벤트 ID, 경작지 ID와 사용자 ID만 기록하며,
-     * 피드백 본문과 URL은 기록하지 않습니다.</p>
+     * <p>ACK과 미반환 조건을 모두 만족해야 정상 반환합니다.
+     * timeout, NACK 또는 unroutable return은 Relay가 재시도할 수
+     * 있도록 예외로 전파합니다.</p>
      *
-     * @param event 호출자가 생성하고 확정한 일일 피드백 이벤트
+     * <p>이 메서드는 DB 트랜잭션을 열거나 Outbox 상태를 변경하지
+     * 않습니다.</p>
+     *
+     * @param event Outbox Payload에서 복원한 일일 피드백 완료 이벤트
+     * @param publicationAttemptId 발행 시도별 고유 식별자
      * @throws NullPointerException event가 null인 경우
-     * @throws RuntimeException RabbitMQ 전송에 실패한 경우
+     * @throws IllegalArgumentException publicationAttemptId가 null 또는 공백인 경우
+     * @throws AmqpException RabbitMQ 발행 또는 확인에 실패한 경우
      */
-    public void sendDailyFeedback(AiEvent.DailyFeedbackGeneratedEvent event) {
+    public void sendDailyFeedbackConfirmed(AiEvent.DailyFeedbackGeneratedEvent event, String publicationAttemptId) {
         Objects.requireNonNull(event, "event는 null일 수 없습니다.");
 
-        rabbitTemplate.convertAndSend(NOTIFICATION_EXCHANGE, DAILY_FEEDBACK_QUEUE, event);
+        if (publicationAttemptId == null || publicationAttemptId.isBlank()) {
+            throw new IllegalArgumentException("publicationAttemptId는 null이거나 공백일 수 없습니다.");
+        }
 
-        log.info("일일 피드백 알림 발행 성공: eventId={}, cultivationId={}, userId={}", event.eventId(), event.cultivationId(), event.userId());
+        String validatedPublicationAttemptId = publicationAttemptId.strip();
+
+        CorrelationData correlationData = new CorrelationData(validatedPublicationAttemptId);
+
+        rabbitTemplate.convertAndSend(NOTIFICATION_EXCHANGE, DAILY_FEEDBACK_QUEUE, event, correlationData);
+
+        Duration publisherConfirmTimeout = dailyFeedbackOutboxProperties.getPublisherConfirmTimeout();
+
+        CorrelationData.Confirm confirm;
+
+        try {
+            confirm = correlationData
+                    .getFuture()
+                    .get(publisherConfirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+
+            throw new AmqpException(CONFIRM_INTERRUPTED_MESSAGE, exception);
+        } catch (TimeoutException exception) {
+            throw new AmqpTimeoutException(CONFIRM_TIMEOUT_MESSAGE, exception);
+        } catch (ExecutionException exception) {
+            throw new AmqpException(CONFIRM_FAILED_MESSAGE, exception.getCause());
+        }
+
+        ReturnedMessage returnedMessage = correlationData.getReturned();
+
+        if (returnedMessage != null) {
+            throw new AmqpMessageReturnedException(MESSAGE_RETURNED_MESSAGE, returnedMessage);
+        }
+
+        if (confirm == null || !confirm.ack()) {
+            throw new AmqpException(BROKER_NOT_ACKNOWLEDGED_MESSAGE);
+        }
+
+        log.info("일일 피드백 알림 발행 성공: eventId={}, cultivationId={}, userId={}, publicationAttemptId={}",
+                event.eventId(), event.cultivationId(), event.userId(), validatedPublicationAttemptId);
     }
 
     /*

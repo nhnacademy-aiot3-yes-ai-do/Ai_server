@@ -131,54 +131,106 @@ class DailyFeedbackContextTest {
         List<SensorChannelStatistics> sensorStats = List.of(createSensorStat(cultivationId));
         DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
         DailyEnvironmentCompliance mismatchedDateCompliance = createCompliance(cultivationId, LocalDate.of(2026, 9, 2));
+        DailyEnvironmentCompliance mismatchedIdCompliance = createCompliance(999L, feedbackDate);
         DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
         DailyNotificationMetrics mismatchedDateMetrics = createMetrics(cultivationId, LocalDate.of(2026, 9, 2));
+        DailyNotificationMetrics mismatchedIdMetrics = createMetrics(999L, feedbackDate);
         DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
         DailyVisionAnalysisSnapshot mismatchedVision = DailyVisionAnalysisSnapshot.withoutPhoto(999L);
 
-        // 1. cultivationId null
+        // 1. cultivationId null or <= 0
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 null, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                0L, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
 
-        // 2. UTC 오프셋
+        // 2. null fields
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, null, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, null, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, null, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, null,
+                thresholds, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                null, sensorStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, null, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, null, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, null, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, metrics, null
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // 3. UTC 오프셋
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, utcSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 3. cultivationId 불일치
+        // 4. cultivationId 불일치
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, mismatchedIdDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, mismatchedIdCompliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                thresholds, sensorStats, compliance, mismatchedIdMetrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
 
-        // 4. OWNER 역할 아님
+        // 5. OWNER 역할 아님
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, managerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 5. mushroomId 불일치
+        // 6. mushroomId 불일치
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, mismatchedMushroomDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 6. compliance date 불일치
+        // 7. compliance date 불일치
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, mismatchedDateCompliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 7. metrics date 불일치
+        // 8. metrics date 불일치
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, mismatchedDateMetrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // 8. vision cultivationId 불일치
+        // 9. vision cultivationId 불일치
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 thresholds, sensorStats, compliance, metrics, mismatchedVision
@@ -197,29 +249,37 @@ class DailyFeedbackContextTest {
         DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
         DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
 
+        List<SensorChannelStatistics> validStats = List.of(createSensorStat(cultivationId));
+        List<DataGeneratorThresholdResponse> validThresholds = List.of(createCurrentThreshold(cultivationId));
+
         // thresholds null 요소
         List<DataGeneratorThresholdResponse> nullElemThresholds = Collections.singletonList(null);
-        List<SensorChannelStatistics> validStats = List.of(createSensorStat(cultivationId));
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 nullElemThresholds, validStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
-        // thresholds 중복 키
-        DataGeneratorThresholdResponse dupTh1 = new DataGeneratorThresholdResponse(cultivationId, "TEMPERATURE", "°C", BigDecimal.valueOf(18), BigDecimal.valueOf(24));
-        DataGeneratorThresholdResponse dupTh2 = new DataGeneratorThresholdResponse(cultivationId, "TEMPERATURE", "°C", BigDecimal.valueOf(20), BigDecimal.valueOf(26));
-        List<DataGeneratorThresholdResponse> dupThresholds = List.of(dupTh1, dupTh2);
+        // thresholds 다른 cultivationId
+        DataGeneratorThresholdResponse diffCultThreshold = new DataGeneratorThresholdResponse(999L, "TEMPERATURE", "°C", BigDecimal.valueOf(18), BigDecimal.valueOf(24));
+        List<DataGeneratorThresholdResponse> diffCultThresholds = List.of(diffCultThreshold);
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
-                dupThresholds, validStats, compliance, metrics, vision
+                diffCultThresholds, validStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
         // sensorStats null 요소
-        List<DataGeneratorThresholdResponse> validThresholds = List.of(createCurrentThreshold(cultivationId));
         List<SensorChannelStatistics> nullElemStats = Collections.singletonList(null);
         assertThatThrownBy(() -> new DailyFeedbackContext(
                 cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
                 validThresholds, nullElemStats, compliance, metrics, vision
+        )).isInstanceOf(IllegalArgumentException.class);
+
+        // sensorStats 다른 cultivationId
+        SensorChannelStatistics diffCultStat = createSensorStat(999L);
+        List<SensorChannelStatistics> diffCultStats = List.of(diffCultStat);
+        assertThatThrownBy(() -> new DailyFeedbackContext(
+                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, mushroomRef,
+                validThresholds, diffCultStats, compliance, metrics, vision
         )).isInstanceOf(IllegalArgumentException.class);
 
         // sensorStats 중복 키
@@ -245,34 +305,68 @@ class DailyFeedbackContextTest {
         DailyEnvironmentCompliance compliance = createCompliance(cultivationId, feedbackDate);
         DailyNotificationMetrics metrics = createMetrics(cultivationId, feedbackDate);
         DailyVisionAnalysisSnapshot vision = DailyVisionAnalysisSnapshot.withoutPhoto(cultivationId);
+        SensorTypeInfoResponse validSensorType = new SensorTypeInfoResponse(100L, "TEMPERATURE", "°C");
 
-        // 1. thresholdInfoResponses null
+        // 1. mushroomReference id <= 0 or blank names
+        MushroomReferenceInfoResponse invalidIdRef = new MushroomReferenceInfoResponse(0L, "느타리", "Oyster", "Pleurotus", List.of());
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, invalidIdRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceInfoResponse blankKoRef = new MushroomReferenceInfoResponse(10L, " ", "Oyster", "Pleurotus", List.of());
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankKoRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceInfoResponse blankEnRef = new MushroomReferenceInfoResponse(10L, "느타리", " ", "Pleurotus", List.of());
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankEnRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceInfoResponse blankScRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", " ", List.of());
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankScRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+
+        // 2. thresholdInfoResponses null / null element
         MushroomReferenceInfoResponse nullThresholdsRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", "Pleurotus", null);
-        assertThatThrownBy(() -> new DailyFeedbackContext(
-                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullThresholdsRef,
-                validThresholds, validStats, compliance, metrics, vision
-        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullThresholdsRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceInfoResponse nullElemRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", "Pleurotus", Collections.singletonList(null));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullElemRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
 
-        // 2. min > max 임계값
-        SensorTypeInfoResponse sensorType = new SensorTypeInfoResponse(100L, "TEMPERATURE", "°C");
-        MushroomReferenceThresholdInfoResponse invalidRangeThreshold = new MushroomReferenceThresholdInfoResponse(
-                1L, sensorType, "GROWTH", BigDecimal.valueOf(30.0), BigDecimal.valueOf(20.0)
-        );
-        MushroomReferenceInfoResponse invalidRangeRef = new MushroomReferenceInfoResponse(
-                10L, "느타리", "Oyster", "Pleurotus", List.of(invalidRangeThreshold)
-        );
-        assertThatThrownBy(() -> new DailyFeedbackContext(
-                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, invalidRangeRef,
-                validThresholds, validStats, compliance, metrics, vision
-        )).isInstanceOf(IllegalArgumentException.class);
+        // 3. threshold id null or <= 0
+        MushroomReferenceThresholdInfoResponse nullThId = new MushroomReferenceThresholdInfoResponse(null, validSensorType, "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse nullThIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(nullThId));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullThIdRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse zeroThId = new MushroomReferenceThresholdInfoResponse(0L, validSensorType, "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse zeroThIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(zeroThId));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, zeroThIdRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
 
-        // 3. 중복 thresholdId
-        MushroomReferenceThresholdInfoResponse th1 = new MushroomReferenceThresholdInfoResponse(1L, sensorType, "GROWTH", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
-        MushroomReferenceThresholdInfoResponse th2 = new MushroomReferenceThresholdInfoResponse(1L, sensorType, "HARVEST", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
-        MushroomReferenceInfoResponse dupIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "Oyster", "Pleurotus", List.of(th1, th2));
-        assertThatThrownBy(() -> new DailyFeedbackContext(
-                cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, dupIdRef,
-                validThresholds, validStats, compliance, metrics, vision
-        )).isInstanceOf(IllegalArgumentException.class);
+        // 4. sensorType validation
+        MushroomReferenceThresholdInfoResponse nullSensorType = new MushroomReferenceThresholdInfoResponse(1L, null, "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse nullSensorTypeRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(nullSensorType));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullSensorTypeRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse zeroSensorTypeId = new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(0L, "TEMP", "°C"), "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse zeroSensorTypeIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(zeroSensorTypeId));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, zeroSensorTypeIdRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse blankSensorType = new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(100L, " ", "°C"), "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse blankSensorTypeRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(blankSensorType));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankSensorTypeRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse blankSensorUnit = new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(100L, "TEMP", " "), "GROWTH", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse blankSensorUnitRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(blankSensorUnit));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankSensorUnitRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+
+        // 5. thresholdType blank, min/max null, min > max
+        MushroomReferenceThresholdInfoResponse blankThType = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, " ", BigDecimal.TEN, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse blankThTypeRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(blankThType));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, blankThTypeRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse nullMinTh = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, "GROWTH", null, BigDecimal.valueOf(20));
+        MushroomReferenceInfoResponse nullMinThRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(nullMinTh));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullMinThRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse nullMaxTh = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, "GROWTH", BigDecimal.TEN, null);
+        MushroomReferenceInfoResponse nullMaxThRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(nullMaxTh));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, nullMaxThRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+        MushroomReferenceThresholdInfoResponse invalidRangeThreshold = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, "GROWTH", BigDecimal.valueOf(30.0), BigDecimal.valueOf(20.0));
+        MushroomReferenceInfoResponse invalidRangeRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(invalidRangeThreshold));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, invalidRangeRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+
+        // 6. duplicate thresholdId & duplicate sensorTypeId + thresholdType
+        MushroomReferenceThresholdInfoResponse th1 = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, "GROWTH", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
+        MushroomReferenceThresholdInfoResponse th2 = new MushroomReferenceThresholdInfoResponse(1L, validSensorType, "HARVEST", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
+        MushroomReferenceInfoResponse dupThIdRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(th1, th2));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, dupThIdRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
+
+        MushroomReferenceThresholdInfoResponse th4 = new MushroomReferenceThresholdInfoResponse(2L, validSensorType, "GROWTH", BigDecimal.valueOf(18.0), BigDecimal.valueOf(25.0));
+        MushroomReferenceInfoResponse dupTypeRef = new MushroomReferenceInfoResponse(10L, "느타리", "O", "P", List.of(th1, th4));
+        assertThatThrownBy(() -> new DailyFeedbackContext(cultivationId, feedbackDate, seoulSnapshotAt, ownerDetail, dupTypeRef, validThresholds, validStats, compliance, metrics, vision)).isInstanceOf(IllegalArgumentException.class);
     }
 }

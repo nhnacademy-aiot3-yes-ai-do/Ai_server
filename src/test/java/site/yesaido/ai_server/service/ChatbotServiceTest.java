@@ -9,7 +9,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -87,7 +86,7 @@ class ChatbotServiceTest {
         ChatClient.ChatClientRequestSpec requestSpec = mock(ChatClient.ChatClientRequestSpec.class, org.mockito.Mockito.RETURNS_SELF);
         ChatClient.CallResponseSpec callSpec = mock(ChatClient.CallResponseSpec.class);
 
-        when(geminiChatClient.prompt(any(Prompt.class))).thenReturn(requestSpec);
+        when(geminiChatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(callSpec);
         when(callSpec.content()).thenReturn(reply);
     }
@@ -198,5 +197,34 @@ class ChatbotServiceTest {
         List<ChatMessageDto> result = chatbotService.getConversationHistory(22L, null, null);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("chat - 오염된 과거 메시지(에러, 도구 흉내 텍스트)가 프롬프트 주입 이력에서 필터링되는지 검증")
+    void chat_filtersPollutedHistoryMessages() {
+        ChatMessageRequest request = new ChatMessageRequest(1L, null, "정상 질문", 1L);
+        ChatConversation mockConv = ChatConversation.builder().userId(22L).channelId(1L).externalConversationId("sess").build();
+        ReflectionTestUtils.setField(mockConv, "id", 1L);
+
+        when(conversationRepository.findByIdAndUserId(1L, 22L)).thenReturn(Optional.of(mockConv));
+        when(messageRepository.findMaxSequenceNumber(1L)).thenReturn(4L, 5L);
+
+        ChatMessage normalUser = ChatMessage.builder().chatConversationId(1L).role(MessageRole.USER).content("질문").sequenceNumber(1L).build();
+        ChatMessage errorMsg = ChatMessage.builder().chatConversationId(1L).role(MessageRole.ASSISTANT).content("죄송합니다. 현재 일시적인 AI 서비스 점검 중이라 답변을 못합니다.").sequenceNumber(2L).build();
+        ChatMessage waitMsg = ChatMessage.builder().chatConversationId(1L).role(MessageRole.ASSISTANT).content("잠시만 기다려 주세요").sequenceNumber(3L).build();
+        ChatMessage toolFakeMsg = ChatMessage.builder().chatConversationId(1L).role(MessageRole.ASSISTANT).content("[EnvironmentTool] 호출 중입니다").sequenceNumber(4L).build();
+
+        when(messageRepository.findTop10ByChatConversationIdOrderBySequenceNumberDesc(1L))
+                .thenReturn(List.of(toolFakeMsg, waitMsg, errorMsg, normalUser));
+
+        ChatMessage savedUser = ChatMessage.builder().chatConversationId(1L).role(MessageRole.USER).content("정상 질문").sequenceNumber(5L).build();
+        ChatMessage savedAi = ChatMessage.builder().chatConversationId(1L).role(MessageRole.ASSISTANT).content("답변입니다.").sequenceNumber(6L).build();
+        when(messageRepository.save(any(ChatMessage.class))).thenReturn(savedUser, savedAi);
+
+        mockGeminiSuccess("답변입니다.");
+
+        ChatMessageResponse response = chatbotService.chat(22L, request);
+
+        assertThat(response.reply()).isEqualTo("답변입니다.");
     }
 }

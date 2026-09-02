@@ -24,11 +24,14 @@ import site.yesaido.ai_server.tool.EnvironmentTool;
 import site.yesaido.ai_server.tool.MushroomKnowledgeTool;
 import site.yesaido.ai_server.tool.PastHarvestInsightTool;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ChatbotService {
+    private static final Pattern PSEUDO_TOOL_TAG_PATTERN = Pattern.compile("!?\\[[^]]*]\\([^)]*\\)");
+
     private final PromptProperties promptProperties;
     private final ChatClient geminiChatClient; // Gemini 2.5 Flash Lite
 
@@ -69,6 +72,7 @@ public class ChatbotService {
 
             PromptTemplate promptTemplate = new PromptTemplate(promptProperties.getChatSystemPrompt());
             Map<String, Object> contextMap = new HashMap<>();
+            contextMap.put("userId", userId);
             contextMap.put("cultivationId", request.cultivationId() != null ? request.cultivationId() : "선택 안 됨 (일반 질문 모드)");
             Message systemMessage = promptTemplate.createMessage(contextMap);
 
@@ -82,6 +86,7 @@ public class ChatbotService {
 
             Optional<String> replyOpt = callAi(prompt);
             String replyText = replyOpt.orElse("죄송합니다. 현재 일시적인 AI 서비스 점검 중이라 답변을 생성하지 못했습니다. 잠시 후 다시 질문해 주세요.");
+            replyText = PSEUDO_TOOL_TAG_PATTERN.matcher(replyText).replaceAll("").trim();
 
             // AI 답변 DB 저장
             Long aiSeq = messageRepository.findMaxSequenceNumber(conversation.getId()) + 1;
@@ -160,23 +165,42 @@ public class ChatbotService {
         List<ChatMessage> chronologicalList = recentList.reversed();
         List<Message> messages = new ArrayList<>();
         for (ChatMessage msg : chronologicalList) {
+            String content = msg.getContent();
+
+            // 과거 실패 메시지나 도구 호출 흉내 텍스트는 AI 프롬프트 주입에서 제외
+            if (isPollutedOrErrorMessage(content)) {
+                continue;
+            }
+
             if (msg.getRole() == MessageRole.USER) {
-                messages.add(new UserMessage(msg.getContent()));
+                messages.add(new UserMessage(content));
             } else if (msg.getRole() == MessageRole.ASSISTANT) {
-                messages.add(new AssistantMessage(msg.getContent()));
+                messages.add(new AssistantMessage(content));
             }
         }
         return messages;
     }
 
+    private boolean isPollutedOrErrorMessage(String content) {
+        return content == null
+                || content.contains("일시적인 AI 서비스 점검 중")
+                || content.contains("잠시만 기다려 주세요")
+                || content.contains("EnvironmentTool")
+                || content.contains("MushroomKnowledgeTool")
+                || content.contains("PastHarvestInsightTool");
+    }
+
     // Gemini 3.5 Flash Lite 호출 (3대 Tools 포함)
     private Optional<String> callAi(Prompt prompt) {
         try {
-            log.info("Gemini 2.5 Flash Lite 호출 시작 (3대 도구 연동)");
-            String response = geminiChatClient.prompt(prompt)
+            log.info("Gemini 2.5 Flash Lite 호출 시작 (3대 도구 연동) - 프롬프트 메시지 수: {}", prompt.getInstructions().size());
+            String response = geminiChatClient.prompt()
+                    .messages(prompt.getInstructions())
                     .tools(mushroomKnowledgeTool, environmentTool, pastHarvestInsightTool)
                     .call()
                     .content();
+
+            log.info("[챗봇 AI 응답 원문 수신] response: {}", response);
 
             if (response != null && !response.isBlank()) {
                 return Optional.of(response);

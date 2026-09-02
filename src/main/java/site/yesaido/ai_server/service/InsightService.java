@@ -207,12 +207,64 @@ public class InsightService {
             BigDecimal targetCo2,
             BigDecimal targetLight
     ) {
-        // 오차 범위 설정
+        return searchSimilarCandidates(userId, mushroomId, targetTemp, targetHum, targetCo2, targetLight);
+    }
+
+    // 경작지 ID 기반 우수 인사이트 후보 5개 조회 (BFF 및 프론트엔드 연동용)
+    @Transactional(readOnly = true)
+    public List<InsightCandidateResponse> getInsightCandidatesByCultivation(
+            Long userId, Long cultivationId, Long mushroomId,
+            BigDecimal temp, BigDecimal hum, BigDecimal co2, BigDecimal light
+    ) {
+        Long targetMushroomId = mushroomId;
+
+        // cultivationId가 들어온 경우 해당 재배지에서 버섯 ID 추출
+        if (targetMushroomId == null && cultivationId != null) {
+            try {
+                CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
+                if (cultivation != null) {
+                    targetMushroomId = cultivation.mushroomId();
+                }
+            } catch (Exception e) {
+                log.warn("재배지 정보 조회 실패 (cultivationId={})", cultivationId, e);
+            }
+        }
+
+        if (targetMushroomId == null) {
+            return List.of();
+        }
+
+        // 온습도 파라미터가 모두 있는 경우 오차 범위 기반 유사 환경 검색 실행
+        if (temp != null && hum != null && co2 != null && light != null) {
+            return searchSimilarCandidates(userId, targetMushroomId, temp, hum, co2, light);
+        }
+
+        // 온습도가 아직 누적되지 않았거나 cultivationId만 넘어온 경우:
+        // 내 재배지들을 제외한 해당 버섯의 최고 수확량 TOP 5 조회
+        List<Long> myCultivationIds = getMyCultivation(userId);
+        List<Insight> topInsights = insightRepository.findTopHarvests(targetMushroomId);
+
+        return topInsights.stream()
+                .filter(i -> !myCultivationIds.contains(i.getCultivationId()))
+                .limit(5)
+                .map(InsightCandidateResponse::from)
+                .toList();
+    }
+
+    // 공통 검색 로직 (private 메서드로 분리하여 Spring Self-Invocation 경고 완벽 해결)
+    private List<InsightCandidateResponse> searchSimilarCandidates(
+            Long userId,
+            Long mushroomId,
+            BigDecimal targetTemp,
+            BigDecimal targetHum,
+            BigDecimal targetCo2,
+            BigDecimal targetLight
+    ) {
         BigDecimal tempOffset = new BigDecimal("2.00");
         BigDecimal humOffset = new BigDecimal("5.00");
         BigDecimal co2Offset = new BigDecimal("100.00");
         BigDecimal lightOffset = new BigDecimal("50.00");
-        // 센서 수치의 검색 최소 최댓값 계산
+
         BigDecimal minTemp = targetTemp.subtract(tempOffset);
         BigDecimal maxTemp = targetTemp.add(tempOffset);
         BigDecimal minHum  = targetHum.subtract(humOffset);
@@ -221,7 +273,7 @@ public class InsightService {
         BigDecimal maxCo2  = targetCo2.add(co2Offset);
         BigDecimal minLight= targetLight.subtract(lightOffset);
         BigDecimal maxLight= targetLight.add(lightOffset);
-        // Insight 조회에 내 Cultivation 검색 안되게 방지 내 재배 Id 목록 조회
+
         List<Long> myCultivationIds = getMyCultivation(userId);
 
         InsightSearchCondition condition = new InsightSearchCondition(
@@ -232,16 +284,14 @@ public class InsightService {
                 minLight, maxLight,
                 myCultivationIds
         );
-        InsightRepository repository = Objects.requireNonNull(insightRepository);
-        List<Insight> candidates = repository.findSimilarCandidates(
+        List<Insight> candidates = insightRepository.findSimilarCandidates(
                 condition,
-                PageRequest.of(0, 5) // 최신순 상위 5개만 가져오도록 지정
+                PageRequest.of(0, 5)
         );
 
         return candidates.stream()
                 .map(InsightCandidateResponse::from)
                 .toList();
-
     }
 
     // 검색 기록에서 내 Cultivation 조회 안되게 설정
@@ -390,10 +440,10 @@ public class InsightService {
                     return new InsightDetailResponse.DailyRecordDto(
                             i + 1, // dayNumber (1일차, 2일차...)
                             df.getFeedbackDate().toString(),
-                            extractSensorAvgFromSnapshot(snapshot, TEMPERATURE, null),
-                            extractSensorAvgFromSnapshot(snapshot, HUMIDITY, null),
-                            extractSensorAvgFromSnapshot(snapshot, CO2, null),
-                            extractSensorAvgFromSnapshot(snapshot, LIGHT, null),
+                            extractSensorAvgFromSnapshot(snapshot, TEMPERATURE),
+                            extractSensorAvgFromSnapshot(snapshot, HUMIDITY),
+                            extractSensorAvgFromSnapshot(snapshot, CO2),
+                            extractSensorAvgFromSnapshot(snapshot, LIGHT),
                             df.getContent()
                     );
                 })
@@ -504,13 +554,13 @@ public class InsightService {
     }
 
     // 스냅샷에서 일별 센서 평균값 추출
-    private BigDecimal extractSensorAvgFromSnapshot(JsonNode snapshot, String sensorType, BigDecimal fallback) {
-        if (snapshot == null || !snapshot.has("sensorStatistics")) return fallback;
+    private BigDecimal extractSensorAvgFromSnapshot(JsonNode snapshot, String sensorType) {
+        if (snapshot == null || !snapshot.has("sensorStatistics")) return null;
         JsonNode stats = snapshot.get("sensorStatistics");
         if (stats.has(sensorType) && stats.get(sensorType).has("average")) {
             return BigDecimal.valueOf(stats.get(sensorType).get("average").asDouble()).setScale(2, RoundingMode.HALF_UP);
         }
-        return fallback;
+        return null;
     }
 
     // 알림 및 제어 누적용 클래스

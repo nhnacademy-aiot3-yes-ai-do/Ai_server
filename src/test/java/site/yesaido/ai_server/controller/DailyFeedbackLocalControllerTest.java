@@ -11,18 +11,23 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import site.yesaido.ai_server.config.ObjectMapperConfig;
+import site.yesaido.ai_server.dto.daily_feedback.DailyFeedbackBatchResult;
 import site.yesaido.ai_server.entity.DailyFeedback;
 import site.yesaido.ai_server.service.DailyFeedbackBatchService;
 import site.yesaido.ai_server.service.DailyFeedbackPersistenceService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,6 +47,27 @@ class DailyFeedbackLocalControllerTest {
 
     @MockitoBean
     private DailyFeedbackPersistenceService dailyFeedbackPersistenceService;
+
+    @Test
+    @DisplayName("일일 피드백 배치 수동 실행 성공 검증")
+    void runDailyFeedbackBatch_success() throws Exception {
+        LocalDate feedbackDate = LocalDate.of(2026, 9, 1);
+        OffsetDateTime snapshotAt = OffsetDateTime.of(2026, 9, 1, 12, 0, 0, 0, ZoneOffset.ofHours(9));
+        DailyFeedbackBatchResult result = new DailyFeedbackBatchResult(
+                feedbackDate, snapshotAt, 1, 1, 0, 0,
+                List.of(DailyFeedbackBatchResult.CultivationResult.created(1L))
+        );
+
+        given(dailyFeedbackBatchService.execute(feedbackDate)).willReturn(result);
+
+        mockMvc.perform(
+                        post("/api/test/daily-feedbacks/run")
+                                .param("date", feedbackDate.toString())
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.feedbackDate").value("2026-09-01"))
+                .andExpect(jsonPath("$.data.targetCount").value(1));
+    }
 
     @Test
     @DisplayName("저장된 Context Snapshot을 실제 JSON object 구조로 반환한다")

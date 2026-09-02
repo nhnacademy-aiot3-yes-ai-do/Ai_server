@@ -42,6 +42,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -170,7 +171,10 @@ class DailyFeedbackProcessorTest {
         verify(
                 persistenceService,
                 never()
-        ).saveOrGet(any(DailyFeedback.class));
+        ).saveOrGet(
+                any(DailyFeedback.class),
+                eq(OWNER_USER_ID)
+        );
     }
 
     @Test
@@ -238,7 +242,10 @@ class DailyFeedbackProcessorTest {
                 .generate(context);
 
         inOrder.verify(persistenceService)
-                .saveOrGet(feedbackCaptor.capture());
+                .saveOrGet(
+                        feedbackCaptor.capture(),
+                        eq(OWNER_USER_ID)
+                );
 
         inOrder.verifyNoMoreInteractions();
 
@@ -322,7 +329,10 @@ class DailyFeedbackProcessorTest {
                 .isEqualTo(PersistenceStatus.EXISTING);
 
         verify(persistenceService)
-                .saveOrGet(any(DailyFeedback.class));
+                .saveOrGet(
+                        any(DailyFeedback.class),
+                        eq(OWNER_USER_ID)
+                );
     }
 
     @Test
@@ -374,7 +384,10 @@ class DailyFeedbackProcessorTest {
         verify(
                 persistenceService,
                 never()
-        ).saveOrGet(any(DailyFeedback.class));
+        ).saveOrGet(
+                any(DailyFeedback.class),
+                eq(OWNER_USER_ID)
+        );
     }
 
     @ParameterizedTest(name = "{0}")
@@ -417,7 +430,10 @@ class DailyFeedbackProcessorTest {
         verify(
                 persistenceService,
                 never()
-        ).saveOrGet(any(DailyFeedback.class));
+        ).saveOrGet(
+                any(DailyFeedback.class),
+                eq(OWNER_USER_ID)
+        );
     }
 
     @ParameterizedTest(name = "{0}")
@@ -535,7 +551,8 @@ class DailyFeedbackProcessorTest {
 
         when(
                 persistenceService.saveOrGet(
-                        any(DailyFeedback.class)
+                        any(DailyFeedback.class),
+                        eq(OWNER_USER_ID)
                 )
         ).thenReturn(persistenceResult);
     }
