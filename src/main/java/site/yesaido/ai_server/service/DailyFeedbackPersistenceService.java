@@ -28,6 +28,7 @@ import java.util.Optional;
 public class DailyFeedbackPersistenceService {
 
     private final DailyFeedbackRepository dailyFeedbackRepository;
+    private final DailyFeedbackAtomicWriter dailyFeedbackAtomicWriter;
 
     /**
      * 같은 경작지와 날짜에 이미 저장된 피드백을 조회합니다.
@@ -46,40 +47,45 @@ public class DailyFeedbackPersistenceService {
     }
 
     /**
-     * 신규 피드백을 저장하거나 동일 키의 기존 피드백을 반환합니다.
+     * 신규 피드백과 PENDING Outbox를 저장하거나 동일 키의 기존 피드백을
+     * 반환합니다.
      *
-     * <p>선조회 이후 다른 Pod가 먼저 저장할 수 있으므로
-     * {@code saveAndFlush}에서 UNIQUE 충돌을 즉시 확인합니다.
-     * 충돌 후 동일 키의 행이 확인되면 정상적인 동시 실행으로 처리하고
-     * DB에 실제 저장된 기존 행을 반환합니다.</p>
+     * <p>선조회 이후 다른 Pod가 먼저 저장할 수 있으므로 신규 저장은
+     * {@link DailyFeedbackAtomicWriter}의 REQUIRES_NEW 트랜잭션에서
+     * 수행합니다. 피드백 또는 Outbox의 UNIQUE 충돌이 발생하면
+     * 새 트랜잭션은 예외가 이 메서드로 전달되기 전에 완전히 롤백됩니다.</p>
      *
-     * <p>충돌 후에도 동일 키의 행이 없다면 다른 DB 제약 위반일 수 있으므로
-     * 원래 {@link DataIntegrityViolationException}을 다시 던집니다.</p>
+     * <p>롤백이 완료된 뒤 같은 경작지와 날짜의 피드백을 재조회하여
+     * 기존 행이 확인되면 정상적인 동시 실행 결과로 처리합니다.
+     * 기존 행이 없다면 다른 DB 제약 위반일 수 있으므로 원래
+     * {@link DataIntegrityViolationException}을 다시 던집니다.</p>
      *
      * @param candidate 저장되지 않은 신규 DailyFeedback 엔티티
+     * @param ownerUserId 완료 이벤트를 받을 경작지 OWNER 사용자 ID
      * @return 실제 DB 기준 피드백과 이번 호출의 저장 결과
      */
-    public PersistenceResult saveOrGet(DailyFeedback candidate) {
+    public PersistenceResult saveOrGet(DailyFeedback candidate, Long ownerUserId) {
         Objects.requireNonNull(candidate, "candidate는 null일 수 없습니다.");
 
         if (candidate.getId() != null) {
             throw new IllegalArgumentException("candidate는 아직 저장되지 않은 신규 엔티티여야 합니다.");
         }
 
+        validateOwnerUserId(ownerUserId);
+
         Long cultivationId = candidate.getCultivationId();
         LocalDate feedbackDate = candidate.getFeedbackDate();
 
         validateKey(cultivationId, feedbackDate);
 
-        Optional<DailyFeedback> existing =
-                dailyFeedbackRepository.findByCultivationIdAndFeedbackDate(cultivationId, feedbackDate);
+        Optional<DailyFeedback> existing = dailyFeedbackRepository.findByCultivationIdAndFeedbackDate(cultivationId, feedbackDate);
 
         if (existing.isPresent()) {
             return new PersistenceResult(existing.get(), PersistenceStatus.EXISTING);
         }
 
         try {
-            DailyFeedback saved = dailyFeedbackRepository.saveAndFlush(candidate);
+            DailyFeedback saved = dailyFeedbackAtomicWriter.saveWithPendingOutbox(candidate, ownerUserId);
 
             return new PersistenceResult(saved, PersistenceStatus.CREATED);
         } catch (DataIntegrityViolationException conflict) {
@@ -101,6 +107,12 @@ public class DailyFeedbackPersistenceService {
 
         if (feedbackDate == null) {
             throw new IllegalArgumentException("feedbackDate는 null일 수 없습니다.");
+        }
+    }
+
+    private void validateOwnerUserId(Long ownerUserId) {
+        if (ownerUserId == null || ownerUserId <= 0) {
+            throw new IllegalArgumentException("ownerUserId는 null이 아니며 0보다 커야 합니다.");
         }
     }
 

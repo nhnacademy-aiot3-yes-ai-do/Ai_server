@@ -23,7 +23,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -33,18 +32,23 @@ import static org.mockito.Mockito.when;
 class DailyFeedbackPersistenceServiceTest {
 
     private static final Long CULTIVATION_ID = 10L;
+    private static final Long OWNER_USER_ID = 20L;
     private static final LocalDate FEEDBACK_DATE =
             LocalDate.of(2026, 9, 1);
 
     @Mock
     private DailyFeedbackRepository dailyFeedbackRepository;
 
+    @Mock
+    private DailyFeedbackAtomicWriter dailyFeedbackAtomicWriter;
+
     private DailyFeedbackPersistenceService service;
 
     @BeforeEach
     void setUp() {
         service = new DailyFeedbackPersistenceService(
-                dailyFeedbackRepository
+                dailyFeedbackRepository,
+                dailyFeedbackAtomicWriter
         );
     }
 
@@ -170,7 +174,10 @@ class DailyFeedbackPersistenceServiceTest {
         NullPointerException exception =
                 catchThrowableOfType(
                         NullPointerException.class,
-                        () -> service.saveOrGet(null)
+                        () -> service.saveOrGet(
+                                null,
+                                OWNER_USER_ID
+                        )
                 );
 
         assertThat(exception)
@@ -178,7 +185,10 @@ class DailyFeedbackPersistenceServiceTest {
                         "candidate는 null일 수 없습니다."
                 );
 
-        verifyNoInteractions(dailyFeedbackRepository);
+        verifyNoInteractions(
+                dailyFeedbackRepository,
+                dailyFeedbackAtomicWriter
+        );
     }
 
     @Test
@@ -194,7 +204,8 @@ class DailyFeedbackPersistenceServiceTest {
                 catchThrowableOfType(
                         IllegalArgumentException.class,
                         () -> service.saveOrGet(
-                                persistedCandidate
+                                persistedCandidate,
+                                OWNER_USER_ID
                         )
                 );
 
@@ -203,7 +214,10 @@ class DailyFeedbackPersistenceServiceTest {
                         "candidate는 아직 저장되지 않은 신규 엔티티여야 합니다."
                 );
 
-        verifyNoInteractions(dailyFeedbackRepository);
+        verifyNoInteractions(
+                dailyFeedbackRepository,
+                dailyFeedbackAtomicWriter
+        );
     }
 
     @Test
@@ -224,7 +238,10 @@ class DailyFeedbackPersistenceServiceTest {
         ).thenReturn(Optional.of(existing));
 
         PersistenceResult actual =
-                service.saveOrGet(candidate);
+                service.saveOrGet(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         assertThat(actual.feedback())
                 .isSameAs(existing);
@@ -238,14 +255,11 @@ class DailyFeedbackPersistenceServiceTest {
                         FEEDBACK_DATE
                 );
 
-        verify(
-                dailyFeedbackRepository,
-                never()
-        ).saveAndFlush(candidate);
+        verifyNoInteractions(dailyFeedbackAtomicWriter);
     }
 
     @Test
-    @DisplayName("기존 피드백이 없으면 saveAndFlush로 저장하고 CREATED로 반환한다")
+    @DisplayName("기존 피드백이 없으면 Atomic Writer로 저장하고 CREATED로 반환한다")
     void savesNewFeedback() {
         DailyFeedback candidate =
                 feedback("새로 생성한 일일 피드백");
@@ -262,12 +276,18 @@ class DailyFeedbackPersistenceServiceTest {
         ).thenReturn(Optional.empty());
 
         when(
-                dailyFeedbackRepository
-                        .saveAndFlush(candidate)
+                dailyFeedbackAtomicWriter
+                        .saveWithPendingOutbox(
+                                candidate,
+                                OWNER_USER_ID
+                        )
         ).thenReturn(saved);
 
         PersistenceResult actual =
-                service.saveOrGet(candidate);
+                service.saveOrGet(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         assertThat(actual.feedback())
                 .isSameAs(saved);
@@ -276,7 +296,10 @@ class DailyFeedbackPersistenceServiceTest {
                 .isEqualTo(PersistenceStatus.CREATED);
 
         InOrder orderedCalls =
-                inOrder(dailyFeedbackRepository);
+                inOrder(
+                        dailyFeedbackRepository,
+                        dailyFeedbackAtomicWriter
+                );
 
         orderedCalls.verify(dailyFeedbackRepository)
                 .findByCultivationIdAndFeedbackDate(
@@ -284,8 +307,11 @@ class DailyFeedbackPersistenceServiceTest {
                         FEEDBACK_DATE
                 );
 
-        orderedCalls.verify(dailyFeedbackRepository)
-                .saveAndFlush(candidate);
+        orderedCalls.verify(dailyFeedbackAtomicWriter)
+                .saveWithPendingOutbox(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         orderedCalls.verifyNoMoreInteractions();
     }
@@ -314,12 +340,18 @@ class DailyFeedbackPersistenceServiceTest {
                 .thenReturn(Optional.of(concurrentlySaved));
 
         when(
-                dailyFeedbackRepository
-                        .saveAndFlush(candidate)
+                dailyFeedbackAtomicWriter
+                        .saveWithPendingOutbox(
+                                candidate,
+                                OWNER_USER_ID
+                        )
         ).thenThrow(conflict);
 
         PersistenceResult actual =
-                service.saveOrGet(candidate);
+                service.saveOrGet(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         assertThat(actual.feedback())
                 .isSameAs(concurrentlySaved);
@@ -328,7 +360,10 @@ class DailyFeedbackPersistenceServiceTest {
                 .isEqualTo(PersistenceStatus.EXISTING);
 
         InOrder orderedCalls =
-                inOrder(dailyFeedbackRepository);
+                inOrder(
+                        dailyFeedbackRepository,
+                        dailyFeedbackAtomicWriter
+                );
 
         orderedCalls.verify(dailyFeedbackRepository)
                 .findByCultivationIdAndFeedbackDate(
@@ -336,8 +371,11 @@ class DailyFeedbackPersistenceServiceTest {
                         FEEDBACK_DATE
                 );
 
-        orderedCalls.verify(dailyFeedbackRepository)
-                .saveAndFlush(candidate);
+        orderedCalls.verify(dailyFeedbackAtomicWriter)
+                .saveWithPendingOutbox(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         orderedCalls.verify(dailyFeedbackRepository)
                 .findByCultivationIdAndFeedbackDate(
@@ -377,21 +415,30 @@ class DailyFeedbackPersistenceServiceTest {
                 .thenReturn(Optional.empty());
 
         when(
-                dailyFeedbackRepository
-                        .saveAndFlush(candidate)
+                dailyFeedbackAtomicWriter
+                        .saveWithPendingOutbox(
+                                candidate,
+                                OWNER_USER_ID
+                        )
         ).thenThrow(databaseFailure);
 
         DataIntegrityViolationException actual =
                 catchThrowableOfType(
                         DataIntegrityViolationException.class,
-                        () -> service.saveOrGet(candidate)
+                        () -> service.saveOrGet(
+                                candidate,
+                                OWNER_USER_ID
+                        )
                 );
 
         assertThat(actual)
                 .isSameAs(databaseFailure);
 
         InOrder orderedCalls =
-                inOrder(dailyFeedbackRepository);
+                inOrder(
+                        dailyFeedbackRepository,
+                        dailyFeedbackAtomicWriter
+                );
 
         orderedCalls.verify(dailyFeedbackRepository)
                 .findByCultivationIdAndFeedbackDate(
@@ -399,8 +446,11 @@ class DailyFeedbackPersistenceServiceTest {
                         FEEDBACK_DATE
                 );
 
-        orderedCalls.verify(dailyFeedbackRepository)
-                .saveAndFlush(candidate);
+        orderedCalls.verify(dailyFeedbackAtomicWriter)
+                .saveWithPendingOutbox(
+                        candidate,
+                        OWNER_USER_ID
+                );
 
         orderedCalls.verify(dailyFeedbackRepository)
                 .findByCultivationIdAndFeedbackDate(
