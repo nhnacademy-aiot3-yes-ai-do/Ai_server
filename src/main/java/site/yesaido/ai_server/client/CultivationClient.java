@@ -145,6 +145,7 @@ public interface CultivationClient {
             @PathVariable("cultivation-id") Long cultivationId,
             @RequestParam("device-eui") String deviceEui,
             @RequestParam("sensor-type") String sensorType,
+            @RequestParam("unit") String unit,
             @RequestHeader("X-User-Id") Long userId
     );
 }
