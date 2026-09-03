@@ -51,7 +51,7 @@ class DailySensorStatisticsServiceTest {
         );
 
         given(targetResolver.resolveChannels(snapshot, 1L)).willReturn(List.of(channel));
-        given(cultivationClient.getSensorTrend(1L, "EUI-001", "TEMPERATURE", 100L)).willReturn(trendResponse);
+        given(cultivationClient.getSensorTrend(1L, "EUI-001", "TEMPERATURE", "°C", 100L)).willReturn(trendResponse);
         given(statisticsCalculator.calculate(channel, trendResponse)).willReturn(stats);
 
         List<SensorChannelStatistics> result = service.collect(snapshot, 1L, 100L);
