@@ -74,7 +74,6 @@ class DailyFeedbackResponseTest {
                 "hasVisionAnalysis",
                 "content",
                 "createdAt"
-        );
-        assertThat(componentNames).doesNotContain("contextSnapshot");
+        ).doesNotContain("contextSnapshot");
     }
 }
