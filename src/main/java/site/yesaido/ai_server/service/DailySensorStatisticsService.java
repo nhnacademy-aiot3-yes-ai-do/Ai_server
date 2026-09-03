@@ -78,7 +78,7 @@ public class DailySensorStatisticsService {
 
         for (SensorChannelKey channel : channels) {
             SensorTrendPointListResponse response = cultivationClient.getSensorTrend(
-                    channel.cultivationId(), channel.deviceEui(), channel.sensorType(), ownerUserId);
+                    channel.cultivationId(), channel.deviceEui(), channel.sensorType(), channel.unit(), ownerUserId);
 
             SensorChannelStatistics channelStatistics = statisticsCalculator.calculate(channel, response);
 
