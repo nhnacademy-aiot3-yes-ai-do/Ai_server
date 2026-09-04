@@ -7,6 +7,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Component;
 import site.yesaido.ai_server.rabbitmq.event.AiEvent.HarvestCompletedEvent;
 import site.yesaido.ai_server.service.InsightService;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.AI_HARVEST_QUEUE;
 
 @Slf4j
@@ -23,7 +24,7 @@ public class HarvestEventConsumer {
             log.info("수확 완료 건에 대한 AI 인사이트 DB 적재 성공: cultivationId={}", event.cultivationId());
         } catch (Exception e) {
             log.error("AI 인사이트 적재 실패 (DLQ로 이동): cultivationId={}", event.cultivationId(), e);
-            throw e; // 예외를 던져야 RabbitMQ가 실패를 인지하고 DLQ로 넘김
+            throw new AmqpRejectAndDontRequeueException("AI 인사이트 적재 실패", e); // 예외를 던져야 RabbitMQ가 실패를 인지하고 DLQ로 넘김
         }
     }
 }
