@@ -7,6 +7,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
 import site.yesaido.ai_server.entity.Insight;
+
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,5 +34,8 @@ public interface InsightRepository extends JpaRepository<Insight,Long> {
             @Param("cond") InsightSearchCondition condition,
             Pageable pageable
     );
+    // 특정 버섯의 정상 수확량 목록 오름차순 조회(병해 과락 30점 이하는 제외해서) -평균 수확량 업데이트 하는데 사용
+    @Query("SELECT i.harvestWeightGrams FROM Insight i WHERE i.mushroomId = :mushroomId AND i.growthScore > 30 ORDER BY i.harvestWeightGrams ASC")
+    List<BigDecimal> findValidHarvestWeightsByMushroomId(@Param("mushroomId") Long mushroomId);
 
 }
