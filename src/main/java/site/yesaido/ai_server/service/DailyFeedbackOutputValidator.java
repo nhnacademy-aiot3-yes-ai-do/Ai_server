@@ -31,10 +31,10 @@ public class DailyFeedbackOutputValidator {
     );
 
     private static final Pattern ATX_HEADING_PATTERN = Pattern.compile(
-            "^ {0,3}#{1,6}(?!#)(?:[\\t ]+.*)?$");
+            "^ {0,3}#{1,6}(?!#)(?:[\\t ].*)?$");
 
     private static final Pattern CODE_FENCE_PATTERN = Pattern.compile(
-            "^ {0,3}(?:`{3,}|~{3,}).*$", Pattern.MULTILINE);
+            "^ {0,3}(?:`{3,}|~{3,})", Pattern.MULTILINE);
 
     private static final Pattern EXTERNAL_RESOURCE_PATTERN = Pattern.compile(
             "(?:https?|s3)://|x-amz-|x-goog-", Pattern.CASE_INSENSITIVE);
@@ -92,7 +92,7 @@ public class DailyFeedbackOutputValidator {
 
         String[] linesBeforeStrip = lineEndingNormalized.split("\n", -1);
 
-        if (!REQUIRED_HEADINGS.get(0).equals(linesBeforeStrip[0])) {
+        if (!REQUIRED_HEADINGS.getFirst().equals(linesBeforeStrip[0])) {
             throw new AiAnalysisFailedException("일일 피드백 응답의 첫 번째 제목이 올바르지 않습니다.");
         }
 

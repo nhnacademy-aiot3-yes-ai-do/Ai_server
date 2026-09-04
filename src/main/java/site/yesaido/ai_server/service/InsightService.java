@@ -37,9 +37,12 @@ import java.util.stream.IntStream;
 @RequiredArgsConstructor
 public class InsightService {
     // Vision 병충해 판단
-    private static final String STATUS_HEALTHY = "HEALTHY"; // 정상/건강 (감점 없음)
     private static final String STATUS_UNCERTAIN = "UNCERTAIN"; // 판정보류/애매 (-5점 페널티)
     private static final String STATUS_DISEASE_SUSPECTED = "DISEASE_SUSPECTED"; // 병해 감지 (즉시 폐기: 최대 30점 제한)
+    private static final String VISION_ANALYSIS = "visionAnalysis";
+    private static final String STATUS = "status";
+    private static final String MODE_GROWTH = "GROWTH"; // 모드
+    private static final String MODE_HARVEST = "HARVEST";
 
     private static final Map<Long, BigDecimal> INITIAL_BASELINE_HARVEST_WEIGHTS = Map.of(
             1L, BigDecimal.valueOf(300.0), // 느타리
@@ -48,6 +51,8 @@ public class InsightService {
             4L, BigDecimal.valueOf(300.0), // 팽이
             5L, BigDecimal.valueOf(500.0)  // 표고
     );
+    // 수확량 메모리 캐시(동적 기준)
+    private final Map<Long, BigDecimal> dynamicBaselineHarvestWeights = new java.util.concurrent.ConcurrentHashMap<>(INITIAL_BASELINE_HARVEST_WEIGHTS);
 
     private static final String TEMPERATURE = "TEMPERATURE";
     private static final String HUMIDITY = "HUMIDITY";
@@ -108,10 +113,12 @@ public class InsightService {
             sensorAverages = (averageResponse != null) ? averageResponse.sensorTypeAverages() : null;
         } catch (Exception e) {
             log.warn("환경 유지율 및 센서 평균 조회 실패 (cultivationId={})", cultivationId, e);
+        } // 센서 평균 데이터, 유지율 둘 다 없으면 인사이트 생성 스킵하고 종료하게 추가
+        // 유효한 센서 데이터가 전혀 없으면 인사이트 생성을 스킵하고 종료
+        if (!hasValidSensorData(sensorAverages, compliance)) {
+            log.warn("유효한 센서 측정 데이터가 존재하지 않아 인사이트 생성을 건너뜁니다. (cultivationId={})", cultivationId);
+            return null;
         }
-
-        Integer growthScore = calculateGrowthScore(compliance);
-        updateProductScoreWithRetry(client, cultivationId, growthScore);
 
         // [컴파일 에러 해결 및 더미값 제거] 실제 센서 평균값 추출 (없으면 null)
         BigDecimal avgTemp = findSensorAverage(sensorAverages, TEMPERATURE);
@@ -122,18 +129,18 @@ public class InsightService {
         String sensorDataText = buildSensorDataText(sensorAverages, compliance);
 
         Long mushroomId = cultivation.mushroomId();
-        MushCsvReader csvReader = Objects.requireNonNull(mushCsvReader);
-        String mushroomName = csvReader.readMushroomCsv().stream()
-                .filter(dto -> dto.mushroomId().equals(mushroomId))
-                .map(MushroomCsvDto::mushroomName)
-                .findFirst()
-                .orElse("버섯");
+        String mushroomName = resolveMushroomName(mushroomId);
 
         // 추가 센서 장착 이력 분석
         String additionalSensorsText = buildAdditionalSensorsText(client, userId, cultivationId);
+
         // 일일 피드백 누적 데이터 분석(모드 전환, 알림/제어 통계, 병충해 유무)
         List<DailyFeedback> dailyFeedbacks = dailyFeedbackRepository.findAllByCultivationId(cultivationId);
         DailyStatsSummary dailyStats = analyzeDailyFeedbacks(dailyFeedbacks);
+
+        // 버섯 ID와 일일 피드백 조회가 끝난 후, 정밀 점수 산출 및 Cultivation_server로 전송
+        Integer growthScore = calculateGrowthScore(compliance, harvestWeight, mushroomId, dailyFeedbacks);
+        updateProductScoreWithRetry(client, cultivationId, growthScore);
 
         // Insight 요약문 생성
         CultivationTimeInfo timeInfo = new CultivationTimeInfo(startedAtText, harvestedAtText, cultivationPeriod);
@@ -142,6 +149,7 @@ public class InsightService {
                 growthScore, sensorDataText, additionalSensorsText, dailyStats
         );
 
+        // Insight 엔티티 조립
         Insight insight = Insight.builder()
                 .cultivationId(cultivationId)
                 .mushroomId(mushroomId)
@@ -154,6 +162,7 @@ public class InsightService {
                 .summary(summary)
                 .build();
 
+        // 👉 마지막 return은 DB 저장 전용 메서드를 호출하여 반환합니다!
         return saveInsight(insight);
     }
 
@@ -227,39 +236,24 @@ public class InsightService {
             Long userId, Long cultivationId, Long mushroomId,
             BigDecimal temp, BigDecimal hum, BigDecimal co2, BigDecimal light
     ) {
-        Long targetMushroomId = mushroomId;
-
-        // cultivationId가 들어온 경우 해당 재배지에서 버섯 ID 추출
-        if (targetMushroomId == null && cultivationId != null) {
-            try {
-                CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
-                if (cultivation != null) {
-                    targetMushroomId = cultivation.mushroomId();
-                }
-            } catch (Exception e) {
-                log.warn("재배지 정보 조회 실패 (cultivationId={})", cultivationId, e);
-            }
-        }
-
-        if (targetMushroomId == null) {
+        CultivationInfo info = resolveCultivationInfo(userId, cultivationId, mushroomId);
+        if (info.mushroomId() == null) {
             return List.of();
         }
 
-        // 온습도 파라미터가 모두 있는 경우 오차 범위 기반 유사 환경 검색 실행
-        if (temp != null && hum != null && co2 != null && light != null) {
-            return searchSimilarCandidates(userId, targetMushroomId, temp, hum, co2, light);
+        // 1. 온·습도 파라미터가 직접 전달된 경우
+        if (hasExplicitEnvironment(temp, hum, co2, light)) {
+            return searchSimilarCandidates(userId, info.mushroomId(), temp, hum, co2, light);
         }
 
-        // 온습도가 아직 누적되지 않았거나 cultivationId만 넘어온 경우:
-        // 내 재배지들을 제외한 해당 버섯의 최고 수확량 TOP 5 조회
-        List<Long> myCultivationIds = getMyCultivation(userId);
-        List<Insight> topInsights = insightRepository.findTopHarvests(targetMushroomId);
+        // 2. 현재 모드(생육기 vs 수확기) 기준 임계값 매칭
+        List<InsightCandidateResponse> matched = searchByModeTargetEnvironment(userId, info.mushroomId(), info.mode());
+        if (!matched.isEmpty()) {
+            return matched;
+        }
 
-        return topInsights.stream()
-                .filter(i -> !myCultivationIds.contains(i.getCultivationId()))
-                .limit(5)
-                .map(InsightCandidateResponse::from)
-                .toList();
+        // 3. Fallback (동일 버섯 최고 수확량 TOP 5)
+        return findTopHarvestFallback(userId, info.mushroomId());
     }
 
     // 공통 검색 로직 (private 메서드로 분리하여 Spring Self-Invocation 경고 완벽 해결)
@@ -325,21 +319,107 @@ public class InsightService {
             return List.of(-1L);
         }
     }
-    // 생육 점수 로직 변경 필요
-    private Integer calculateGrowthScore(EnvironmentComplianceResponse compliance) {
-        if (compliance == null) return null;
+    // 생육 점수 로직
+    private Integer calculateGrowthScore(
+            EnvironmentComplianceResponse compliance,
+            BigDecimal actualHarvestWeight,
+            Long mushroomId,
+            List<DailyFeedback> dailyFeedbacks
+    ) {
+        double envScore = calculateEnvironmentScore(compliance);
+        double yieldScore = calculateYieldScore(actualHarvestWeight, mushroomId);
+        double totalScore = applyDiseasePenalty(envScore + yieldScore, dailyFeedbacks);
 
-        List<BigDecimal> score = Stream.of(
+        return (int) Math.round(Math.clamp(totalScore, 0.0, 100.0));
+    }
+
+    // ① 환경 유지 점수 계산 (최대 60점)
+    private double calculateEnvironmentScore(EnvironmentComplianceResponse compliance) {
+        if (compliance == null) return 0.0;
+
+        List<BigDecimal> compliances = Stream.of(
                 compliance.temperatureCompliance(),
                 compliance.humidityCompliance(),
                 compliance.co2Compliance(),
                 compliance.lightCompliance()
         ).filter(Objects::nonNull).toList();
 
-        if (score.isEmpty()) return null;
+        int sensorCount = compliances.size();
+        if (sensorCount == 0) return 0.0;
 
-        BigDecimal sum = score.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(score.size()), 0, RoundingMode.HALF_UP).intValue();
+        double avgCompliance = compliances.stream()
+                .mapToDouble(c -> Math.clamp(c.doubleValue(), 0.0, 100.0))
+                .average()
+                .orElse(0.0);
+
+        double maxEnvScore = switch (sensorCount) {
+            case 4 -> 60.0;
+            case 3 -> 50.0;
+            case 2 -> 40.0;
+            case 1 -> 25.0;
+            default -> 0.0;
+        };
+        return (avgCompliance / 100.0) * maxEnvScore;
+    }
+
+    // ② 수확량 달성 점수 계산 (최대 40점)
+    private double calculateYieldScore(BigDecimal actualHarvestWeight, Long mushroomId) {
+        if (actualHarvestWeight == null || actualHarvestWeight.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0.0;
+        }
+
+        BigDecimal baselineWeight = dynamicBaselineHarvestWeights.getOrDefault(
+                mushroomId,
+                INITIAL_BASELINE_HARVEST_WEIGHTS.getOrDefault(mushroomId, BigDecimal.valueOf(300.0))
+        );
+        double ratio = actualHarvestWeight.divide(baselineWeight, 4, RoundingMode.HALF_UP).doubleValue();
+
+        if (ratio >= 1.0) {
+            return Math.min(40.0, ratio * 20.0);
+        } else if (ratio >= 0.3) {
+            return ((ratio - 0.3) / 0.7) * 20.0;
+        }
+        return 0.0;
+    }
+
+    // ③ Vision AI 병해 상태 페널티 보정
+    private double applyDiseasePenalty(double totalScore, List<DailyFeedback> dailyFeedbacks) {
+        if (dailyFeedbacks == null || dailyFeedbacks.isEmpty()) {
+            return totalScore;
+        }
+
+        boolean hasDisease = false;
+        boolean hasUncertain = false;
+
+        for (DailyFeedback df : dailyFeedbacks) {
+            JsonNode snapshot = df.getContextSnapshot();
+            if (snapshot != null && snapshot.has(VISION_ANALYSIS)) {
+                String status = snapshot.path(VISION_ANALYSIS).path(STATUS).asText("");
+                if (STATUS_DISEASE_SUSPECTED.equalsIgnoreCase(status)) {
+                    hasDisease = true;
+                } else if (STATUS_UNCERTAIN.equalsIgnoreCase(status)) {
+                    hasUncertain = true;
+                }
+            }
+        }
+
+        if (hasDisease) {
+            return Math.min(totalScore, 30.0);
+        } else if (hasUncertain) {
+            return Math.max(0.0, totalScore - 5.0);
+        }
+        return totalScore;
+    }
+    // 유효한 센서 데이터 있는지 검사(평균값 목록 최소 1개 이상)
+    private boolean hasValidSensorData(List<SensorTypeAverageResponse> sensorAverages, EnvironmentComplianceResponse compliance) {
+        boolean hasAverages = sensorAverages != null && !sensorAverages.isEmpty();
+        boolean hasCompliance = compliance != null && (
+                compliance.temperatureCompliance() != null ||
+                        compliance.humidityCompliance() != null ||
+                        compliance.co2Compliance() != null ||
+                        compliance.lightCompliance() != null
+        );
+        return hasAverages || hasCompliance;
     }
 
     // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 null)
@@ -401,7 +481,7 @@ public class InsightService {
         }
     }
 
-    // 2) 유지율 분리
+    // 유지율 분리
     private void appendCompliance(StringBuilder sb, EnvironmentComplianceResponse compliance) {
         if (compliance == null) {
             return;
@@ -539,7 +619,7 @@ public class InsightService {
         }
 
         String mode = snapshot.path("cultivationDetail").path("mode").asText(snapshot.path("mode").asText(""));
-        if ("HARVEST".equalsIgnoreCase(mode)) {
+        if (MODE_HARVEST.equalsIgnoreCase(mode)) {
             return String.format("생육 %d일차(%s)에 수확 모드로 전환", dayNumber, date);
         }
 
@@ -548,8 +628,8 @@ public class InsightService {
 
     // 비전 병충해 감지
     private boolean isDiseaseDetected(JsonNode snapshot) {
-        if (snapshot != null && snapshot.has("visionAnalysis")) {
-            String status = snapshot.path("visionAnalysis").path("status").asText("");
+        if (snapshot != null && snapshot.has(VISION_ANALYSIS)) {
+            String status = snapshot.path(VISION_ANALYSIS).path(STATUS).asText("");
             return STATUS_DISEASE_SUSPECTED.equalsIgnoreCase(status);
         }
         return false;
@@ -583,9 +663,10 @@ public class InsightService {
         void accumulate(JsonNode snapshot) {
             if (snapshot != null && snapshot.has("notificationMetrics")) {
                 JsonNode nm = snapshot.get("notificationMetrics");
-                this.totalEvents += nm.path("totalEvents").asInt(0);
-                this.thresholdAlerts += nm.path("ruleEngineCooldownThresholdEvents").asInt(0);
-                this.actuatorSuccess += nm.path("actuatorControlSuccessEvents").asInt(0);
+                // 실제 DTO 규격 키 우선 조회 + 하위 호환 지원
+                this.totalEvents += nm.path("totalNotificationCount").asInt(nm.path("totalEvents").asInt(0));
+                this.thresholdAlerts += nm.path("thresholdBreachAlertCount").asInt(nm.path("ruleEngineCooldownThresholdEvents").asInt(0));
+                this.actuatorSuccess += nm.path("actuatorControlSucceededCount").asInt(nm.path("actuatorControlSuccessEvents").asInt(0));
             }
         }
     }
@@ -618,5 +699,144 @@ public class InsightService {
                 }
             }
         }
+    }
+
+    private TargetEnvironment resolveTargetEnvironmentByMode(Long mushroomId, String mode) {
+        try {
+            var referenceList = cultivationClient.getMushroomReference();
+            if (referenceList == null || referenceList.mushroomReferenceInfoResponses() == null) {
+                return null;
+            }
+
+            var mushroomRefOpt = referenceList.mushroomReferenceInfoResponses().stream()
+                    .filter(ref -> ref.id() == mushroomId)
+                    .findFirst();
+
+            if (mushroomRefOpt.isEmpty() || mushroomRefOpt.get().thresholdInfoResponses() == null) {
+                return null;
+            }
+
+            // 현재 모드(GROWTH 또는 HARVEST)에 해당하는 임계값 목록 필터링
+            var thresholds = mushroomRefOpt.get().thresholdInfoResponses().stream()
+                    .filter(t -> t.thresholdType() != null && t.thresholdType().equalsIgnoreCase(mode))
+                    .toList();
+
+            BigDecimal temp = calculateMidpoint(thresholds, TEMPERATURE);
+            BigDecimal hum = calculateMidpoint(thresholds, HUMIDITY);
+            BigDecimal co2 = calculateMidpoint(thresholds, CO2);
+            BigDecimal light = calculateMidpoint(thresholds, LIGHT);
+
+            if (temp != null && hum != null && co2 != null && light != null) {
+                return new TargetEnvironment(temp, hum, co2, light);
+            }
+        } catch (Exception e) {
+            log.warn("버섯 기준 임계값 조회 실패 (mushroomId={}, mode={})", mushroomId, mode, e);
+        }
+        return null;
+    }
+
+    // 최소값(min)과 최대값(max)의 중간값 계산
+    private BigDecimal calculateMidpoint(List<site.yesaido.ai_server.dto.client.mushroom_reference.
+            MushroomReferenceThresholdInfoResponse> list, String sensorType) {
+        return list.stream()
+                .filter(t -> t.sensorType() != null && sensorType.equalsIgnoreCase(t.sensorType().type()))
+                .filter(t -> t.thresholdMin() != null && t.thresholdMax() != null)
+                .findFirst()
+                .map(t -> t.thresholdMin().add(t.thresholdMax()).divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP))
+                .orElse(null);
+    }
+    // 인사이트에 사용하는 평균 수확량 기준이 명확하지 않으니 누적된 인사이트의 수확량을 기준으로 계속 업데이트하는거 추가
+    // 기준 수확량 자가 튜닝 스케줄러 (서버 시작 시 1회 실행 + 매일 새벽 3시 자동 자가 튜닝 스케줄링)
+    @jakarta.annotation.PostConstruct
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 0 3 * * *")
+    public void tuneBaselineHarvestWeights() {
+        for (Map.Entry<Long, BigDecimal> entry : INITIAL_BASELINE_HARVEST_WEIGHTS.entrySet()) {
+            Long mushroomId = entry.getKey();
+            BigDecimal defaultBaseline = entry.getValue();
+
+            List<BigDecimal> weights = insightRepository.findValidHarvestWeightsByMushroomId(mushroomId);
+            if (weights.size() >= 5) { // 표본이 5건 이상일 때 자가 튜닝 실행
+                BigDecimal trimmedMean = calculateTrimmedMean(weights);
+                BigDecimal oldBaseline = dynamicBaselineHarvestWeights.getOrDefault(mushroomId, defaultBaseline);
+
+                // EMA 스무딩 (기존 70% + 신규 절삭평균 30%)
+                BigDecimal updatedBaseline = oldBaseline.multiply(BigDecimal.valueOf(0.7))
+                        .add(trimmedMean.multiply(BigDecimal.valueOf(0.3)))
+                        .setScale(2, RoundingMode.HALF_UP);
+
+                dynamicBaselineHarvestWeights.put(mushroomId, updatedBaseline);
+                log.info("[Self-Tuning] 버섯(ID:{}) 기준 수확량 자가 튜닝 완료: {}g -> {}g (표본 수: {}건)",
+                        mushroomId, oldBaseline, updatedBaseline, weights.size());
+            }
+        }
+    }
+
+    // 상/하위 10% 이상치 제거 절삭 평균 계산
+    private BigDecimal calculateTrimmedMean(List<BigDecimal> sortedWeights) {
+        int size = sortedWeights.size();
+        int trimCount = Math.max(1, (int) (size * 0.1)); // 상하위 10% (최소 1개)
+
+        List<BigDecimal> trimmedList = sortedWeights.subList(trimCount, size - trimCount);
+        if (trimmedList.isEmpty()) {
+            trimmedList = sortedWeights;
+        }
+
+        BigDecimal sum = trimmedList.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(trimmedList.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    // 버섯 이름 조회 헬퍼
+    private String resolveMushroomName(Long mushroomId) {
+        MushCsvReader csvReader = Objects.requireNonNull(mushCsvReader);
+        return csvReader.readMushroomCsv().stream()
+                .filter(dto -> dto.mushroomId().equals(mushroomId))
+                .map(MushroomCsvDto::mushroomName)
+                .findFirst()
+                .orElse("버섯");
+    }
+
+    private record CultivationInfo(Long mushroomId, String mode) {}
+
+    // 재배지 정보(버섯 ID 및 현재 모드) 추출
+    private CultivationInfo resolveCultivationInfo(Long userId, Long cultivationId, Long fallbackMushroomId) {
+        if (cultivationId == null) {
+            return new CultivationInfo(fallbackMushroomId, MODE_GROWTH);
+        }
+        try {
+            CultivationDetailResponse cultivation = cultivationClient.getCultivation(userId, cultivationId);
+            if (cultivation != null) {
+                Long targetMushroomId = (fallbackMushroomId != null) ? fallbackMushroomId : cultivation.mushroomId();
+                String mode = (cultivation.mode() != null) ? cultivation.mode().toUpperCase() : MODE_GROWTH;
+                return new CultivationInfo(targetMushroomId, mode);
+            }
+        } catch (Exception e) {
+            log.warn("재배지 정보 조회 실패 (cultivationId={})", cultivationId, e);
+        }
+        return new CultivationInfo(fallbackMushroomId, MODE_GROWTH);
+    }
+
+    // 4대 필수 센서 파라미터 지정 여부 확인
+    private boolean hasExplicitEnvironment(BigDecimal temp, BigDecimal hum, BigDecimal co2, BigDecimal light) {
+        return temp != null && hum != null && co2 != null && light != null;
+    }
+
+    // 모드별 기준 임계값 기반 유사 검색
+    private List<InsightCandidateResponse> searchByModeTargetEnvironment(Long userId, Long mushroomId, String mode) {
+        TargetEnvironment targetEnv = resolveTargetEnvironmentByMode(mushroomId, mode);
+        if (targetEnv == null) {
+            return List.of();
+        }
+        return searchSimilarCandidates(userId, mushroomId, targetEnv.temp(), targetEnv.hum(), targetEnv.co2(), targetEnv.light());
+    }
+
+    // 최고 수확량 Fallback
+    private List<InsightCandidateResponse> findTopHarvestFallback(Long userId, Long mushroomId) {
+        List<Long> myCultivationIds = getMyCultivation(userId);
+        // 내 재배지 제외 고려하여 여유있게 상위 10건 조회 후 5건 추출
+        return insightRepository.findTopHarvests(mushroomId, PageRequest.of(0, 10)).stream()
+                .filter(i -> !myCultivationIds.contains(i.getCultivationId()))
+                .limit(5)
+                .map(InsightCandidateResponse::from)
+                .toList();
     }
 }

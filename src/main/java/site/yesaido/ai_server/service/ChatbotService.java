@@ -200,8 +200,6 @@ public class ChatbotService {
                     .call()
                     .content();
 
-            log.info("[챗봇 AI 응답 원문 수신] response: {}", response);
-
             if (response != null && !response.isBlank()) {
                 return Optional.of(response);
             }

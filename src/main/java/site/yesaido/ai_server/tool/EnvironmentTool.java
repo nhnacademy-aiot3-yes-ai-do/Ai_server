@@ -23,17 +23,13 @@ public class EnvironmentTool {
     // 전체 재배지 목록 조회 (Gemini가 시스템 프롬프트의 userId를 직접 바인딩하여 도구 실행 강제)
     @Tool(name = "getUserCultivations", description = "데이터베이스에서 사용자의 전체 재배지 목록(재배지 ID, 이름, 버섯 품종, 재배 상태)을 실시간 조회하는 필수 도구입니다. 사용자가 '재배지 목록', '경작지 목록', '내 재배지', '농장 목록' 등을 물어보면 텍스트 답변 대신 반드시 이 함수를 호출해야 합니다.")
     public String getUserCultivations(@ToolParam(description = "조회할 사용자의 고유 ID (시스템 컨텍스트의 '현재 로그인된 사용자 ID' 값)", required = false) Long userId) {
-        log.info("[EnvironmentTool.getUserCultivations 호출됨] 인자로 넘어온 userId: {}, UserContextHolder의 userId: {}", userId, UserContextHolder.getUserId());
         Long targetUserId = (userId != null) ? userId : UserContextHolder.getUserId();
         if (targetUserId == null) {
             log.error("UserContextHolder 및 ToolParam에 userId가 설정되어 있지 않습니다.");
             return "인증된 사용자 정보를 찾을 수 없습니다.";
         }
-
-        log.info("사용자 ID {}의 재배지 목록 조회 시작", targetUserId);
         try {
             CultivationSummaryListResponse response = cultivationClient.getCultivations(targetUserId);
-            log.info("CultivationClient.getCultivations({}) 조회 결과: {}", targetUserId, response);
             if (response == null || response.cultivationSummaryResponses() == null || response.cultivationSummaryResponses().isEmpty()) {
                 return "현재 등록되어 운영 중인 재배지가 없습니다.";
             }

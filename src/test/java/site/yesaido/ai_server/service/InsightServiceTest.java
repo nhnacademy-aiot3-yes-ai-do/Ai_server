@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -17,6 +18,10 @@ import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
+import site.yesaido.ai_server.dto.client.mushroom_reference.SensorTypeInfoResponse;
 import site.yesaido.ai_server.dto.client.sensor.*;
 import site.yesaido.ai_server.entity.DailyFeedback;
 import site.yesaido.ai_server.entity.Insight;
@@ -83,6 +88,19 @@ class InsightServiceTest {
         lenient().when(mushCsvReader.readMushroomCsv()).thenReturn(List.of(
                 new MushroomCsvDto(2L, "느타리버섯", "특징", "내용")
         ));
+
+        // 기본 센서 및 유지율 Mock 설정 (새로운 스킵 및 점수 산출 로직 대응)
+        EnvironmentComplianceResponse defaultCompliance = new EnvironmentComplianceResponse(
+                new BigDecimal("90.00"), new BigDecimal("80.00"), new BigDecimal("70.00"), new BigDecimal("85.00")
+        );
+        List<SensorTypeAverageResponse> defaultAverages = List.of(
+                new SensorTypeAverageResponse(1L, "TEMPERATURE", "°C", 22.50),
+                new SensorTypeAverageResponse(1L, "HUMIDITY", "%", 82.00),
+                new SensorTypeAverageResponse(1L, "CO2", "ppm", 650.00),
+                new SensorTypeAverageResponse(1L, "LIGHT", "lx", 120.00)
+        );
+        lenient().when(cultivationClient.getEnvironmentCompliance(anyLong(), anyLong())).thenReturn(defaultCompliance);
+        lenient().when(cultivationClient.getSensorValuesAverage(anyLong(), anyLong())).thenReturn(new SensorTypeAverageListResponse(defaultAverages));
     }
     // ChatClient 체이닝 모킹 중복 작성 안하기 위해 뻄
     private void setUpMockChatClient(String returnSummary){
@@ -296,7 +314,7 @@ class InsightServiceTest {
         when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
 
-        // 실제 환경 유지율 (온도 90%, 습도 80% -> 평균 85점)
+        // 실제 환경 유지율 (온도 90%, 습도 80% -> 2개 센서 환경 점수 34점 + 400g 수확량 20점 = 54점)
         EnvironmentComplianceResponse mockCompliance = new EnvironmentComplianceResponse(
                 new BigDecimal("90.00"), new BigDecimal("80.00"), null, null
         );
@@ -313,35 +331,47 @@ class InsightServiceTest {
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        // 실제 데이터로 계산된 85점 및 센서 평균값이 DB에 전달되었는지 검증
+        // 실제 데이터로 계산된 54점 및 센서 평균값이 DB에 전달되었는지 검증
         assertThat(response).isNotNull();
         verify(insightRepository).save(argThat(saved ->
-                saved.getGrowthScore().equals(85) &&
+                saved.getGrowthScore().equals(54) &&
                         saved.getAvgTemperature().compareTo(new BigDecimal("23.40")) == 0 &&
                         saved.getAvgHumidity().compareTo(new BigDecimal("78.50")) == 0
         ));
     }
 
     @Test
-    @DisplayName("환경 데이터 조회 실패 시 가짜 더미값 대신 점수와 센서 평균을 null로 안전하게 저장 검증")
+    @DisplayName("환경 데이터 및 센서 평균 조회 실패(0건) 시 인사이트 생성을 스킵하고 null 반환 검증")
     void saveInsight_ComplianceExceptionFallback() {
-        setUpMockChatClient("느타리버섯 요약문");
         when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
         when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
 
-        // 환경 데이터 조회 시 에러 발생 가정
+        // 환경 데이터 조회 시 첫 번째 호출에서 에러 발생 가정 (catch로 넘어가 센서 데이터가 null이 됨)
         when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenThrow(new RuntimeException("Feign 에러"));
-
-        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        assertThat(response).isNotNull();
-        verify(insightRepository).save(argThat(saved ->
-                saved.getGrowthScore() == null &&
-                        saved.getAvgTemperature() == null
-        ));
+        // 센서 데이터가 없으므로 저장을 스킵하고 null을 반환해야 함
+        assertThat(response).isNull();
+        verify(insightRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("센서 측정 데이터와 환경 유지율이 전혀 없을 때 인사이트 적재를 안전하게 건너뛰는지(Skip) 검증")
+    void saveInsight_SkipWhenNoSensorData() {
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 센서 데이터가 0건(null)인 상태
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(null);
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(List.of()));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNull();
+        verify(insightRepository, never()).save(any());
     }
 
     @Test
@@ -456,5 +486,209 @@ class InsightServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.summary()).isEqualTo("직접 저장 요약문");
+    }
+
+    @Test
+    @DisplayName("자가 튜닝: 유효 수확량 표본이 5건 이상일 때 절삭 평균과 EMA 스무딩으로 기준 수확량 갱신 검증")
+    void tuneBaselineHarvestWeights_success() {
+        List<BigDecimal> samples = List.of(
+                new BigDecimal("100.00"),
+                new BigDecimal("400.00"),
+                new BigDecimal("500.00"),
+                new BigDecimal("600.00"),
+                new BigDecimal("1000.00")
+        );
+        when(insightRepository.findValidHarvestWeightsByMushroomId(2L)).thenReturn(samples);
+        when(insightRepository.findValidHarvestWeightsByMushroomId(argThat(id -> id != null && !id.equals(2L))))
+                .thenReturn(List.of());
+
+        insightService.tuneBaselineHarvestWeights();
+
+        verify(insightRepository, atLeastOnce()).findValidHarvestWeightsByMushroomId(anyLong());
+    }
+
+    @Test
+    @DisplayName("자가 튜닝: 수확량 표본이 5건 미만일 때 자가 튜닝을 건너뛰는지 검증")
+    void tuneBaselineHarvestWeights_lessThanFiveSamples_skip() {
+        when(insightRepository.findValidHarvestWeightsByMushroomId(anyLong()))
+                .thenReturn(List.of(new BigDecimal("300.00"), new BigDecimal("400.00")));
+
+        insightService.tuneBaselineHarvestWeights();
+
+        verify(insightRepository, atLeastOnce()).findValidHarvestWeightsByMushroomId(anyLong());
+    }
+
+    @Test
+    @DisplayName("경작지 기반 인사이트 조회: 4대 센서값이 명시적으로 전달된 경우 해당 센서값으로 즉시 검색 검증")
+    void getInsightCandidatesByCultivation_explicitSensors() {
+        CultivationDetailResponse cultivationDetail = new CultivationDetailResponse(
+                10L, 2L, "CULTIVATING", "GROWTH", LocalDateTime.now()
+        );
+        when(cultivationClient.getCultivation(100L, 10L)).thenReturn(cultivationDetail);
+        CultivationSummaryResponse c1 = new CultivationSummaryResponse(10L, "재배1", 2L, "CULTIVATING", "GROWTH", 1, "유저", null);
+        when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of(c1)));
+        when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any(Pageable.class)))
+                .thenReturn(List.of(Insight.builder().cultivationId(20L).mushroomId(2L).build()));
+
+        List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
+                100L, 10L, 2L,
+                new BigDecimal("21.00"), new BigDecimal("85.00"),
+                new BigDecimal("750.00"), new BigDecimal("120.00")
+        );
+
+        assertThat(result).hasSize(1);
+        verify(insightRepository).findSimilarCandidates(
+                argThat(cond -> cond.mushroomId().equals(2L)
+                        && cond.minTemp().compareTo(new BigDecimal("19.00")) == 0
+                        && cond.maxTemp().compareTo(new BigDecimal("23.00")) == 0),
+                any(Pageable.class)
+        );
+    }
+
+    @Test
+    @DisplayName("경작지 기반 인사이트 조회: 센서값이 null일 때 경작지 모드와 버섯 참조 임계값 중간값으로 검색 검증")
+    void getInsightCandidatesByCultivation_nullSensors_resolvesModeThresholds() {
+        CultivationDetailResponse cultivationDetail = new CultivationDetailResponse(
+                10L, 2L, "CULTIVATING", "GROWTH", LocalDateTime.now()
+        );
+        when(cultivationClient.getCultivation(100L, 10L)).thenReturn(cultivationDetail);
+
+        List<MushroomReferenceThresholdInfoResponse> thresholds = List.of(
+                new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(1L, "TEMPERATURE", "°C"), "GROWTH", new BigDecimal("18.00"), new BigDecimal("22.00")),
+                new MushroomReferenceThresholdInfoResponse(2L, new SensorTypeInfoResponse(2L, "HUMIDITY", "%"), "GROWTH", new BigDecimal("80.00"), new BigDecimal("90.00")),
+                new MushroomReferenceThresholdInfoResponse(3L, new SensorTypeInfoResponse(3L, "CO2", "ppm"), "GROWTH", new BigDecimal("600.00"), new BigDecimal("800.00")),
+                new MushroomReferenceThresholdInfoResponse(4L, new SensorTypeInfoResponse(4L, "LIGHT", "lx"), "GROWTH", new BigDecimal("50.00"), new BigDecimal("150.00"))
+        );
+        MushroomReferenceInfoResponse mushroomRef = new MushroomReferenceInfoResponse(
+                2L, "느타리버섯", "Oyster Mushroom", "Pleurotus ostreatus", thresholds
+        );
+        when(cultivationClient.getMushroomReference()).thenReturn(new MushroomReferenceInfoListResponse(List.of(mushroomRef)));
+
+        when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of()));
+        when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any(Pageable.class)))
+                .thenReturn(List.of(Insight.builder().cultivationId(20L).mushroomId(2L).build()));
+
+        List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
+                100L, 10L, null, null, null, null, null
+        );
+
+        assertThat(result).hasSize(1);
+        verify(insightRepository).findSimilarCandidates(
+                argThat(cond -> cond.mushroomId().equals(2L)
+                        && cond.minTemp().compareTo(new BigDecimal("18.00")) == 0
+                        && cond.maxTemp().compareTo(new BigDecimal("22.00")) == 0
+                        && cond.minHum().compareTo(new BigDecimal("80.00")) == 0
+                        && cond.maxHum().compareTo(new BigDecimal("90.00")) == 0
+                        && cond.minCo2().compareTo(new BigDecimal("600.00")) == 0
+                        && cond.maxCo2().compareTo(new BigDecimal("800.00")) == 0
+                        && cond.minLight().compareTo(new BigDecimal("50.00")) == 0
+                        && cond.maxLight().compareTo(new BigDecimal("150.00")) == 0),
+                any(Pageable.class)
+        );
+    }
+
+    @Test
+    @DisplayName("경작지 기반 인사이트 조회: 유사 검색 결과가 0건일 때 최고 수확량 TOP 5 Fallback 동작 검증")
+    void getInsightCandidatesByCultivation_emptyCandidates_fallbackToTopHarvests() {
+        CultivationDetailResponse cultivationDetail = new CultivationDetailResponse(
+                10L, 2L, "CULTIVATING", "GROWTH", LocalDateTime.now()
+        );
+        when(cultivationClient.getCultivation(100L, 10L)).thenReturn(cultivationDetail);
+        when(cultivationClient.getMushroomReference()).thenReturn(null);
+        when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of(
+                new CultivationSummaryResponse(10L, "재배1", 2L, "CULTIVATING", "GROWTH", 1, "유저", null)
+        )));
+
+        Insight topInsight1 = Insight.builder().cultivationId(10L).mushroomId(2L).harvestWeightGrams(new BigDecimal("1000.00")).build();
+        Insight topInsight2 = Insight.builder().cultivationId(20L).mushroomId(2L).harvestWeightGrams(new BigDecimal("900.00")).build();
+        when(insightRepository.findTopHarvests(eq(2L), any(Pageable.class))).thenReturn(List.of(topInsight1, topInsight2));
+
+        List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
+                100L, 10L, 2L, null, null, null, null
+        );
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().cultivationId()).isEqualTo(20L);
+    }
+
+    @Test
+    @DisplayName("경작지 기반 인사이트 조회: cultivationId가 null일 때 fallbackMushroomId 및 기본 모드(GROWTH)로 정상 처리 검증")
+    void getInsightCandidatesByCultivation_nullCultivationId() {
+        when(cultivationClient.getMushroomReference()).thenReturn(null);
+        when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of()));
+        when(insightRepository.findTopHarvests(eq(2L), any(Pageable.class))).thenReturn(List.of());
+
+        List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
+                100L, null, 2L, null, null, null, null
+        );
+
+        assertThat(result).isEmpty();
+        verify(cultivationClient, never()).getCultivation(anyLong(), anyLong());
+    }
+
+    @Test
+    @DisplayName("수확 상품 점수 갱신: Cultivation_server 통신이 연속 3회 실패해도 예외 전파 없이 정상 종료 검증")
+    void updateProductScoreWithRetry_failureLogged() {
+        setUpMockChatClient("느타리버섯 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+        doThrow(new RuntimeException("점수 갱신 서버 장애"))
+                .when(cultivationClient).updateProductScore(anyLong(), any());
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNotNull();
+        verify(cultivationClient, times(3)).updateProductScore(eq(1L), any());
+    }
+
+    @Test
+    @DisplayName("비전 AI 판정: UNCERTAIN 상태가 포함된 경우 총점에서 5점 감점 페널티 적용 검증")
+    void saveInsight_withUncertainVisionStatus_appliesPenalty() {
+        setUpMockChatClient("요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode snapshot = mapper.createObjectNode();
+        snapshot.putObject("visionAnalysis").put("status", "UNCERTAIN");
+
+        DailyFeedback df = DailyFeedback.builder()
+                .cultivationId(1L)
+                .feedbackDate(java.time.LocalDate.of(2026, 8, 1))
+                .hasVisionAnalysis(true)
+                .content("상태 불확실 피드백")
+                .contextSnapshot(snapshot)
+                .build();
+        when(dailyFeedbackRepository.findAllByCultivationId(1L)).thenReturn(List.of(df));
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        insightService.saveHarvestInsight(1L, 100L);
+
+        ArgumentCaptor<Insight> captor = ArgumentCaptor.forClass(Insight.class);
+        verify(insightRepository).save(captor.capture());
+
+        // 페널티 전 69점(환경 48.75점 + 양송이 400g 기준 수확량 20점 = 68.75점)에서 UNCERTAIN 5점 감점 적용(63.75점 -> 반올림 64점)
+        assertThat(captor.getValue().getGrowthScore()).isEqualTo(64);
+    }
+
+    @Test
+    @DisplayName("유지율 DTO 객체는 존재하지만 4대 유지율 필드가 전부 null이고 센서 평균 데이터도 없으면 인사이트 생성을 스킵하고 null 반환 검증")
+    void saveInsight_SkipWhenComplianceFieldsAllNullAndNoSensorAverages() {
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // compliance 객체는 있으나 4대 필드가 전부 null, 센서 평균은 빈 리스트
+        EnvironmentComplianceResponse allNullCompliance = new EnvironmentComplianceResponse(null, null, null, null);
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(allNullCompliance);
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(List.of()));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNull();
+        verify(insightRepository, never()).save(any());
     }
 }
