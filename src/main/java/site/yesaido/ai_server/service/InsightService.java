@@ -114,10 +114,9 @@ public class InsightService {
         } catch (Exception e) {
             log.warn("환경 유지율 및 센서 평균 조회 실패 (cultivationId={})", cultivationId, e);
         } // 센서 평균 데이터, 유지율 둘 다 없으면 인사이트 생성 스킵하고 종료하게 추가
-        boolean hasNoSensorData = (sensorAverages == null || sensorAverages.isEmpty())
-                && (compliance == null);
-        if (hasNoSensorData) {
-            log.warn("센서 측정 데이터가 존재하지 않아 인사이트 생성을 건너뜁니다. (cultivationId={})", cultivationId);
+        // 유효한 센서 데이터가 전혀 없으면 인사이트 생성을 스킵하고 종료
+        if (!hasValidSensorData(sensorAverages, compliance)) {
+            log.warn("유효한 센서 측정 데이터가 존재하지 않아 인사이트 생성을 건너뜁니다. (cultivationId={})", cultivationId);
             return null;
         }
 
@@ -410,6 +409,17 @@ public class InsightService {
             return Math.max(0.0, totalScore - 5.0);
         }
         return totalScore;
+    }
+    // 유효한 센서 데이터 있는지 검사(평균값 목록 최소 1개 이상)
+    private boolean hasValidSensorData(List<SensorTypeAverageResponse> sensorAverages, EnvironmentComplianceResponse compliance) {
+        boolean hasAverages = sensorAverages != null && !sensorAverages.isEmpty();
+        boolean hasCompliance = compliance != null && (
+                compliance.temperatureCompliance() != null ||
+                        compliance.humidityCompliance() != null ||
+                        compliance.co2Compliance() != null ||
+                        compliance.lightCompliance() != null
+        );
+        return hasAverages || hasCompliance;
     }
 
     // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 null)
@@ -822,7 +832,8 @@ public class InsightService {
     // 최고 수확량 Fallback
     private List<InsightCandidateResponse> findTopHarvestFallback(Long userId, Long mushroomId) {
         List<Long> myCultivationIds = getMyCultivation(userId);
-        return insightRepository.findTopHarvests(mushroomId).stream()
+        // 내 재배지 제외 고려하여 여유있게 상위 10건 조회 후 5건 추출
+        return insightRepository.findTopHarvests(mushroomId, PageRequest.of(0, 10)).stream()
                 .filter(i -> !myCultivationIds.contains(i.getCultivationId()))
                 .limit(5)
                 .map(InsightCandidateResponse::from)

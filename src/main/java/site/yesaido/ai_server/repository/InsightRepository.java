@@ -1,5 +1,6 @@
 package site.yesaido.ai_server.repository;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -16,9 +17,14 @@ import java.util.Optional;
 public interface InsightRepository extends JpaRepository<Insight,Long> {
     Optional<Insight> findByCultivationId(Long cultivationId); // 중복 적제 방지
 
-    // 특정 버섯의 최고 수확량 상위 3개 조회(사용자가 챗봇에 잘 키운사람 물어볼 때 사용)
-    @Query("SELECT i FROM Insight i WHERE i.mushroomId = :mushroomId ORDER BY i.harvestWeightGrams DESC LIMIT 3")
-    List<Insight> findTopHarvests(@Param("mushroomId") Long mushroomId);
+    // 특정 버섯의 최고 수확량 상위 N개 조회(Pageable 지원)
+    @Query("SELECT i FROM Insight i WHERE i.mushroomId = :mushroomId ORDER BY i.harvestWeightGrams DESC")
+    List<Insight> findTopHarvests(@Param("mushroomId") Long mushroomId, Pageable pageable);
+
+    // 챗봇 및 기존 코드를 위한 default 메서드 (기존 findTopHarvests(mushroomId) 완벽 호환)
+    default List<Insight> findTopHarvests(Long mushroomId) {
+        return findTopHarvests(mushroomId, PageRequest.of(0, 3));
+    }
 
     @Query("""
         select i from Insight i

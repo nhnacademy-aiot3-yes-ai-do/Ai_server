@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -600,7 +601,7 @@ class InsightServiceTest {
 
         Insight topInsight1 = Insight.builder().cultivationId(10L).mushroomId(2L).harvestWeightGrams(new BigDecimal("1000.00")).build();
         Insight topInsight2 = Insight.builder().cultivationId(20L).mushroomId(2L).harvestWeightGrams(new BigDecimal("900.00")).build();
-        when(insightRepository.findTopHarvests(2L)).thenReturn(List.of(topInsight1, topInsight2));
+        when(insightRepository.findTopHarvests(eq(2L), any(Pageable.class))).thenReturn(List.of(topInsight1, topInsight2));
 
         List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
                 100L, 10L, 2L, null, null, null, null
@@ -615,7 +616,7 @@ class InsightServiceTest {
     void getInsightCandidatesByCultivation_nullCultivationId() {
         when(cultivationClient.getMushroomReference()).thenReturn(null);
         when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of()));
-        when(insightRepository.findTopHarvests(2L)).thenReturn(List.of());
+        when(insightRepository.findTopHarvests(eq(2L), any(Pageable.class))).thenReturn(List.of());
 
         List<InsightCandidateResponse> result = insightService.getInsightCandidatesByCultivation(
                 100L, null, 2L, null, null, null, null
@@ -666,8 +667,28 @@ class InsightServiceTest {
 
         insightService.saveHarvestInsight(1L, 100L);
 
-        org.mockito.ArgumentCaptor<Insight> captor = org.mockito.ArgumentCaptor.forClass(Insight.class);
+        ArgumentCaptor<Insight> captor = ArgumentCaptor.forClass(Insight.class);
         verify(insightRepository).save(captor.capture());
-        assertThat(captor.getValue().getGrowthScore()).isLessThan(81);
+
+        // 페널티 전 69점(환경 48.75점 + 양송이 400g 기준 수확량 20점 = 68.75점)에서 UNCERTAIN 5점 감점 적용(63.75점 -> 반올림 64점)
+        assertThat(captor.getValue().getGrowthScore()).isEqualTo(64);
+    }
+
+    @Test
+    @DisplayName("유지율 DTO 객체는 존재하지만 4대 유지율 필드가 전부 null이고 센서 평균 데이터도 없으면 인사이트 생성을 스킵하고 null 반환 검증")
+    void saveInsight_SkipWhenComplianceFieldsAllNullAndNoSensorAverages() {
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // compliance 객체는 있으나 4대 필드가 전부 null, 센서 평균은 빈 리스트
+        EnvironmentComplianceResponse allNullCompliance = new EnvironmentComplianceResponse(null, null, null, null);
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(allNullCompliance);
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(List.of()));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNull();
+        verify(insightRepository, never()).save(any());
     }
 }
