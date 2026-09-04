@@ -24,20 +24,31 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Stream;
 import com.fasterxml.jackson.databind.JsonNode;
 import site.yesaido.ai_server.dto.client.sensor.CultivationSensorListResponse;
 import site.yesaido.ai_server.entity.DailyFeedback;
-import java.util.Set;
+
 import java.util.stream.IntStream;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class InsightService {
+    // Vision 병충해 판단
+    private static final String STATUS_HEALTHY = "HEALTHY"; // 정상/건강 (감점 없음)
+    private static final String STATUS_UNCERTAIN = "UNCERTAIN"; // 판정보류/애매 (-5점 페널티)
+    private static final String STATUS_DISEASE_SUSPECTED = "DISEASE_SUSPECTED"; // 병해 감지 (즉시 폐기: 최대 30점 제한)
+
+    private static final Map<Long, BigDecimal> INITIAL_BASELINE_HARVEST_WEIGHTS = Map.of(
+            1L, BigDecimal.valueOf(300.0), // 느타리
+            2L, BigDecimal.valueOf(400.0), // 양송이
+            3L, BigDecimal.valueOf(350.0), // 새송이
+            4L, BigDecimal.valueOf(300.0), // 팽이
+            5L, BigDecimal.valueOf(500.0)  // 표고
+    );
+
     private static final String TEMPERATURE = "TEMPERATURE";
     private static final String HUMIDITY = "HUMIDITY";
     private static final String CO2 = "CO2";
@@ -539,7 +550,7 @@ public class InsightService {
     private boolean isDiseaseDetected(JsonNode snapshot) {
         if (snapshot != null && snapshot.has("visionAnalysis")) {
             String status = snapshot.path("visionAnalysis").path("status").asText("");
-            return "DISEASE_SUSPECTED".equalsIgnoreCase(status);
+            return STATUS_DISEASE_SUSPECTED.equalsIgnoreCase(status);
         }
         return false;
     }

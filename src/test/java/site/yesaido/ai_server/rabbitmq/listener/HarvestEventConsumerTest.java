@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import site.yesaido.ai_server.rabbitmq.event.AiEvent.HarvestCompletedEvent;
 import site.yesaido.ai_server.service.InsightService;
 
@@ -33,14 +34,18 @@ class HarvestEventConsumerTest {
     }
 
     @Test
-    @DisplayName("인사이트 적재 실패 시 예외를 던져 RabbitMQ DLQ로 전달되도록 함")
+    @DisplayName("인사이트 적재 실패 시 AmqpRejectAndDontRequeueException을 던져 무한 재시도 없이 DLQ로 전달되도록 함")
     void consumeHarvestEventThrowsExceptionOnFailure() {
+        // given
         HarvestCompletedEvent event = new HarvestCompletedEvent(10L, 1L, "양송이 1번", BigDecimal.valueOf(1200));
-        doThrow(new RuntimeException("DB 적재 실패"))
+        RuntimeException cause = new RuntimeException("DB 적재 실패");
+        doThrow(cause)
                 .when(insightService).saveHarvestInsight(10L, 1L);
 
+        // when & then
         assertThatThrownBy(() -> consumer.consumeHarvestEvent(event))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("DB 적재 실패");
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class)
+                .hasMessage("AI 인사이트 적재 실패")
+                .hasCause(cause);
     }
 }
