@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import site.yesaido.ai_server.controller.docs.DailyFeedbackControllerDocs;
 import site.yesaido.ai_server.dto.common.ApiResponse;
 import site.yesaido.ai_server.dto.daily_feedback.DailyFeedbackResponse;
 import site.yesaido.ai_server.service.DailyFeedbackQueryService;
@@ -28,7 +29,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/v1/ai/cultivations")
 @RequiredArgsConstructor
-public class DailyFeedbackController {
+public class DailyFeedbackController implements DailyFeedbackControllerDocs {
 
     private final DailyFeedbackQueryService dailyFeedbackQueryService;
 
@@ -43,6 +44,7 @@ public class DailyFeedbackController {
      * @param feedbackDate 조회할 피드백 날짜
      * @return 운영용 일일 피드백을 포함한 공통 성공 응답
      */
+    @Override
     @GetMapping("/{cultivation-id}/daily-feedbacks/{feedback-date}")
     public ResponseEntity<ApiResponse<DailyFeedbackResponse>>
     getDailyFeedback(
