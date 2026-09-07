@@ -69,6 +69,7 @@ class DailyFeedbackControllerTest {
                 CULTIVATION_ID,
                 FEEDBACK_DATE,
                 true,
+                100L,
                 FEEDBACK_CONTENT,
                 CREATED_AT
         );
@@ -113,6 +114,10 @@ class DailyFeedbackControllerTest {
                 .andExpect(
                         jsonPath("$.data.hasVisionAnalysis")
                                 .value(true)
+                )
+                .andExpect(
+                        jsonPath("$.data.cultivationPhotoId")
+                                .value(100L)
                 )
                 .andExpect(
                         jsonPath("$.data.content")

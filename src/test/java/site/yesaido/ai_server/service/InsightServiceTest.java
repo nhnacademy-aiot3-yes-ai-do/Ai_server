@@ -13,11 +13,16 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Pageable;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.client.NotificationClient;
 import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
 import site.yesaido.ai_server.dto.client.cultivation.*;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightSearchCondition;
+import site.yesaido.ai_server.dto.client.notification.DailyNotificationEventCountResponse;
+import site.yesaido.ai_server.dto.client.notification.DailyNotificationSummariesResponse;
+import site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryRequest;
+import site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoListResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceInfoResponse;
 import site.yesaido.ai_server.dto.client.mushroom_reference.MushroomReferenceThresholdInfoResponse;
@@ -30,6 +35,7 @@ import site.yesaido.ai_server.repository.DailyFeedbackRepository;
 import site.yesaido.ai_server.repository.InsightRepository;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +59,9 @@ class InsightServiceTest {
 
     @Mock
     private CultivationClient cultivationClient;
+
+    @Mock
+    private NotificationClient notificationClient;
 
     @Mock
     private ChatClient chatClient;
@@ -553,15 +562,7 @@ class InsightServiceTest {
         );
         when(cultivationClient.getCultivation(100L, 10L)).thenReturn(cultivationDetail);
 
-        List<MushroomReferenceThresholdInfoResponse> thresholds = List.of(
-                new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(1L, "TEMPERATURE", "°C"), "GROWTH", new BigDecimal("18.00"), new BigDecimal("22.00")),
-                new MushroomReferenceThresholdInfoResponse(2L, new SensorTypeInfoResponse(2L, "HUMIDITY", "%"), "GROWTH", new BigDecimal("80.00"), new BigDecimal("90.00")),
-                new MushroomReferenceThresholdInfoResponse(3L, new SensorTypeInfoResponse(3L, "CO2", "ppm"), "GROWTH", new BigDecimal("600.00"), new BigDecimal("800.00")),
-                new MushroomReferenceThresholdInfoResponse(4L, new SensorTypeInfoResponse(4L, "LIGHT", "lx"), "GROWTH", new BigDecimal("50.00"), new BigDecimal("150.00"))
-        );
-        MushroomReferenceInfoResponse mushroomRef = new MushroomReferenceInfoResponse(
-                2L, "느타리버섯", "Oyster Mushroom", "Pleurotus ostreatus", thresholds
-        );
+        MushroomReferenceInfoResponse mushroomRef = createMockMushroomReference();
         when(cultivationClient.getMushroomReference()).thenReturn(new MushroomReferenceInfoListResponse(List.of(mushroomRef)));
 
         when(cultivationClient.getCultivations(100L)).thenReturn(new CultivationSummaryListResponse(List.of()));
@@ -690,5 +691,91 @@ class InsightServiceTest {
 
         assertThat(response).isNull();
         verify(insightRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("일일 피드백이 0건일 때(당일 수확 등) Notification_server 직접 호출하여 통계를 누적하는 Fallback 검증")
+    void saveHarvestInsight_fallbackToNotificationServer_whenNoDailyFeedback() {
+        setUpMockChatClient("느타리버섯 인사이트 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+        when(dailyFeedbackRepository.findAllByCultivationId(1L)).thenReturn(List.of()); // 일일 피드백 0건
+
+        LocalDate date = mockCultivation.startedAt().toLocalDate();
+        DailyNotificationSummariesResponse summariesResponse = createSampleNotificationSummaries(date);
+
+        when(notificationClient.getDailySummaries(any(DailyNotificationSummaryRequest.class)))
+                .thenReturn(summariesResponse);
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNotNull();
+        // Notification_server로 direct fallback 요청이 발생했는지 검증
+        verify(notificationClient, atLeastOnce()).getDailySummaries(any(DailyNotificationSummaryRequest.class));
+        verify(insightRepository).save(any(Insight.class));
+    }
+
+    @Test
+    @DisplayName("일일 피드백이 이미 존재하는 경우 Notification_server Fallback을 호출하지 않고 스냅샷에서 집계 검증")
+    void saveHarvestInsight_withDailyFeedback_doesNotCallNotificationFallback() {
+        setUpMockChatClient("느타리버섯 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode snapshot = mapper.createObjectNode();
+        snapshot.putObject("notificationMetrics")
+                .put("totalNotificationCount", 5)
+                .put("thresholdBreachAlertCount", 1)
+                .put("actuatorControlSucceededCount", 4);
+
+        DailyFeedback df = DailyFeedback.builder()
+                .cultivationId(1L)
+                .feedbackDate(java.time.LocalDate.now())
+                .hasVisionAnalysis(false)
+                .content("정상 생육 피드백")
+                .contextSnapshot(snapshot)
+                .build();
+        when(dailyFeedbackRepository.findAllByCultivationId(1L)).thenReturn(List.of(df));
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNotNull();
+        // daily_feedback이 있으므로 notificationClient 직접 호출은 0회여야 함
+        verify(notificationClient, never()).getDailySummaries(any());
+        verify(insightRepository).save(any(Insight.class));
+    }
+
+    // --- 테스트 헬퍼 메서드 ---
+
+    private MushroomReferenceInfoResponse createMockMushroomReference() {
+        List<MushroomReferenceThresholdInfoResponse> thresholds = List.of(
+                new MushroomReferenceThresholdInfoResponse(1L, new SensorTypeInfoResponse(1L, "TEMPERATURE", "°C"), "GROWTH", new BigDecimal("18.00"), new BigDecimal("22.00")),
+                new MushroomReferenceThresholdInfoResponse(2L, new SensorTypeInfoResponse(2L, "HUMIDITY", "%"), "GROWTH", new BigDecimal("80.00"), new BigDecimal("90.00")),
+                new MushroomReferenceThresholdInfoResponse(3L, new SensorTypeInfoResponse(3L, "CO2", "ppm"), "GROWTH", new BigDecimal("600.00"), new BigDecimal("800.00")),
+                new MushroomReferenceThresholdInfoResponse(4L, new SensorTypeInfoResponse(4L, "LIGHT", "lx"), "GROWTH", new BigDecimal("50.00"), new BigDecimal("150.00"))
+        );
+        return new MushroomReferenceInfoResponse(
+                2L, "느타리버섯", "Oyster Mushroom", "Pleurotus ostreatus", thresholds
+        );
+    }
+
+    private DailyNotificationSummariesResponse createSampleNotificationSummaries(LocalDate date) {
+        DailyNotificationEventCountResponse breachEvent = new DailyNotificationEventCountResponse(
+                "ENVIRONMENT_THRESHOLD_BREACHED", "임계값 이탈", 2L
+        );
+        DailyNotificationEventCountResponse actuatorEvent = new DailyNotificationEventCountResponse(
+                "ACTUATOR_CONTROL_SUCCEEDED", "제어 성공", 5L
+        );
+        DailyNotificationSummaryResponse summary = new DailyNotificationSummaryResponse(
+                1L, date, 7L, List.of(breachEvent, actuatorEvent)
+        );
+        return new DailyNotificationSummariesResponse(
+                date, "Asia/Seoul", List.of(summary)
+        );
     }
 }
