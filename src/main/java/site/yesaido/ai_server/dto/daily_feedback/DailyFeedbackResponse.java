@@ -23,10 +23,12 @@ public record DailyFeedbackResponse(
         Long cultivationId,
         LocalDate feedbackDate,
         boolean hasVisionAnalysis,
+        Long cultivationPhotoId,
         String content,
         LocalDateTime createdAt
 ) {
-
+    private static final String VISION_ANALYSIS = "visionAnalysis";
+    private static final String CULTIVATION_PHOTO_ID = "cultivationPhotoId";
     /**
      * 저장된 일일 피드백 엔티티를 운영용 조회 응답으로 변환합니다.
      *
@@ -34,11 +36,20 @@ public record DailyFeedbackResponse(
      * @return Context Snapshot을 포함하지 않는 운영용 응답
      */
     public static DailyFeedbackResponse from(DailyFeedback feedback) {
+        Long photoId = null;
+        if (feedback.isHasVisionAnalysis() && feedback.getContextSnapshot() != null) {
+            var visionNode = feedback.getContextSnapshot().path(VISION_ANALYSIS);
+            if (visionNode.hasNonNull(CULTIVATION_PHOTO_ID)) {
+                photoId = visionNode.get(CULTIVATION_PHOTO_ID).asLong();
+            }
+        }
+
         return new DailyFeedbackResponse(
                 feedback.getId(),
                 feedback.getCultivationId(),
                 feedback.getFeedbackDate(),
                 feedback.isHasVisionAnalysis(),
+                photoId,
                 feedback.getContent(),
                 feedback.getCreatedAt()
         );
