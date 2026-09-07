@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageDto;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageRequest;
 import site.yesaido.ai_server.dto.ai.chat.ChatMessageResponse;
+import site.yesaido.ai_server.controller.docs.ChatControllerDocs;
 import site.yesaido.ai_server.dto.common.ApiResponse;
 import site.yesaido.ai_server.service.ChatbotService;
 
@@ -15,10 +16,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/ai/chat")
 @RequiredArgsConstructor
-public class ChatController {
+public class ChatController implements ChatControllerDocs {
     private final ChatbotService chatbotService;
 
     // 챗봇 질문 전송 및 실시간 AI 답변 수신
+    @Override
     @PostMapping
     public ApiResponse<ChatMessageResponse> chat(
             @RequestHeader("X-User-Id") Long userId,
@@ -30,6 +32,7 @@ public class ChatController {
     }
 
     // 특정 대화방의 과거 전체 대화 이력 조회(화면 복원에 사용)
+    @Override
     @GetMapping("/history")
     public ApiResponse<List<ChatMessageDto>> getConversationHistory(
             @RequestHeader("X-User-Id") Long userId,

@@ -2,6 +2,7 @@ package site.yesaido.ai_server.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import site.yesaido.ai_server.controller.docs.SensorValidationControllerDocs;
 import site.yesaido.ai_server.dto.common.ApiResponse;
 import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationRequest;
 import site.yesaido.ai_server.dto.ai.sensor_validation.SensorValidationResponse;
@@ -10,9 +11,10 @@ import site.yesaido.ai_server.service.SensorValidationService;
 @RestController
 @RequestMapping("/api/v1/ai/cultivations")
 @RequiredArgsConstructor
-public class SensorValidationController {
+public class SensorValidationController implements SensorValidationControllerDocs {
     private final SensorValidationService sensorValidationService;
 
+    @Override
     @PostMapping("/{cultivation-id}/sensor-validation")
     public ApiResponse<SensorValidationResponse> validateSensor(
             @RequestHeader("X-User-Id") Long userId,

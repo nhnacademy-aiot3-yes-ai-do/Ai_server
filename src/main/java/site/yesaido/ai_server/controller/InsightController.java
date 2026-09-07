@@ -3,6 +3,7 @@ package site.yesaido.ai_server.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import site.yesaido.ai_server.controller.docs.InsightControllerDocs;
 import site.yesaido.ai_server.dto.ai.insight.InsightCandidateResponse;
 import site.yesaido.ai_server.dto.ai.insight.InsightDetailResponse;
 import site.yesaido.ai_server.dto.common.ApiResponse;
@@ -14,12 +15,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/ai/insights")
 @RequiredArgsConstructor
-public class InsightController {
+public class InsightController implements InsightControllerDocs {
     private final InsightService insightService;
 
     /**
      * 현재 재배 환경과 유사한 과거 우수 재배 사례 5개를 추천 조회 (내 재배지 제외)
      */
+    @Override
     @GetMapping("/candidates")
     public ResponseEntity<ApiResponse<List<InsightCandidateResponse>>> getCandidates(
             @RequestHeader("X-User-Id") Long userId,
@@ -39,6 +41,7 @@ public class InsightController {
     /**
      * 특정 수확 인사이트의 상세 정보 및 일자별(1일차, 2일차...) 피드백 타임라인을 조회
      */
+    @Override
     @GetMapping("/{insight-id}")
     public ResponseEntity<ApiResponse<InsightDetailResponse>> getDetail(
             @PathVariable("insight-id") Long insightId

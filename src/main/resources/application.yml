@@ -97,3 +97,20 @@ daily-feedback:
     stale-timeout: ${DAILY_FEEDBACK_OUTBOX_STALE_TIMEOUT:2m}
     relay-interval: ${DAILY_FEEDBACK_OUTBOX_RELAY_INTERVAL:5s}
     recovery-interval: ${DAILY_FEEDBACK_OUTBOX_RECOVERY_INTERVAL:1m}
+
+# API 문서 (springdoc-openapi / Swagger UI)
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+  # Gateway가 노출하는 경로만 문서화 (internal 배치 API, local 테스트 API 제외)
+  paths-to-match:
+    - /api/v1/ai/**
+    - /api/v1/mushrooms/**
+    - /api/v1/admin/data/**
