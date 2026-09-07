@@ -7,6 +7,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import site.yesaido.ai_server.client.CultivationClient;
+import site.yesaido.ai_server.client.NotificationClient;
 import site.yesaido.ai_server.config.PromptProperties;
 import site.yesaido.ai_server.dto.ai.insight.*;
 import site.yesaido.ai_server.dto.ai.mush_summary.MushroomCsvDto;
@@ -22,6 +23,7 @@ import site.yesaido.ai_server.repository.InsightRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -36,6 +38,7 @@ import java.util.stream.IntStream;
 @Slf4j
 @RequiredArgsConstructor
 public class InsightService {
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     // Vision 병충해 판단
     private static final String STATUS_UNCERTAIN = "UNCERTAIN"; // 판정보류/애매 (-5점 페널티)
     private static final String STATUS_DISEASE_SUSPECTED = "DISEASE_SUSPECTED"; // 병해 감지 (즉시 폐기: 최대 30점 제한)
@@ -62,6 +65,7 @@ public class InsightService {
     private final InsightRepository insightRepository;
     private final DailyFeedbackRepository dailyFeedbackRepository;
     private final CultivationClient cultivationClient;
+    private final NotificationClient notificationClient;
     private final ChatClient chatClient;
     private final MushCsvReader mushCsvReader; // mushroomId로 버섯 이름 가져오기 위해 추가
     private final PromptProperties promptProperties;
@@ -136,7 +140,7 @@ public class InsightService {
 
         // 일일 피드백 누적 데이터 분석(모드 전환, 알림/제어 통계, 병충해 유무)
         List<DailyFeedback> dailyFeedbacks = dailyFeedbackRepository.findAllByCultivationId(cultivationId);
-        DailyStatsSummary dailyStats = analyzeDailyFeedbacks(dailyFeedbacks);
+        DailyStatsSummary dailyStats = analyzeDailyFeedbacks(dailyFeedbacks, cultivationId, startedAt, harvestedAt);
 
         // 버섯 ID와 일일 피드백 조회가 끝난 후, 정밀 점수 산출 및 Cultivation_server로 전송
         Integer growthScore = calculateGrowthScore(compliance, harvestWeight, mushroomId, dailyFeedbacks);
@@ -161,8 +165,6 @@ public class InsightService {
                 .growthScore(growthScore)
                 .summary(summary)
                 .build();
-
-        // 👉 마지막 return은 DB 저장 전용 메서드를 호출하여 반환합니다!
         return saveInsight(insight);
     }
 
@@ -241,18 +243,18 @@ public class InsightService {
             return List.of();
         }
 
-        // 1. 온·습도 파라미터가 직접 전달된 경우
+        // 온 습도 파라미터가 직접 전달된 경우
         if (hasExplicitEnvironment(temp, hum, co2, light)) {
             return searchSimilarCandidates(userId, info.mushroomId(), temp, hum, co2, light);
         }
 
-        // 2. 현재 모드(생육기 vs 수확기) 기준 임계값 매칭
+        // 현재 모드(생육기 vs 수확기) 기준 임계값 매칭
         List<InsightCandidateResponse> matched = searchByModeTargetEnvironment(userId, info.mushroomId(), info.mode());
         if (!matched.isEmpty()) {
             return matched;
         }
 
-        // 3. Fallback (동일 버섯 최고 수확량 TOP 5)
+        // Fallback (동일 버섯 최고 수확량 TOP 5)
         return findTopHarvestFallback(userId, info.mushroomId());
     }
 
@@ -333,7 +335,7 @@ public class InsightService {
         return (int) Math.round(Math.clamp(totalScore, 0.0, 100.0));
     }
 
-    // ① 환경 유지 점수 계산 (최대 60점)
+    // 환경 유지 점수 계산 (최대 60점)
     private double calculateEnvironmentScore(EnvironmentComplianceResponse compliance) {
         if (compliance == null) return 0.0;
 
@@ -362,7 +364,7 @@ public class InsightService {
         return (avgCompliance / 100.0) * maxEnvScore;
     }
 
-    // ② 수확량 달성 점수 계산 (최대 40점)
+    // 수확량 달성 점수 계산 (최대 40점)
     private double calculateYieldScore(BigDecimal actualHarvestWeight, Long mushroomId) {
         if (actualHarvestWeight == null || actualHarvestWeight.compareTo(BigDecimal.ZERO) <= 0) {
             return 0.0;
@@ -382,7 +384,7 @@ public class InsightService {
         return 0.0;
     }
 
-    // ③ Vision AI 병해 상태 페널티 보정
+    // Vision AI 병해 상태 페널티 보정
     private double applyDiseasePenalty(double totalScore, List<DailyFeedback> dailyFeedbacks) {
         if (dailyFeedbacks == null || dailyFeedbacks.isEmpty()) {
             return totalScore;
@@ -438,8 +440,8 @@ public class InsightService {
             return "재배 기간 정보 없음";
         }
         Duration duration = Duration.between(
-                startedAt.atZone(ZoneId.of("Asia/Seoul")),
-                harvestedAt.atZone(ZoneId.of("Asia/Seoul")));
+                startedAt.atZone(KST),
+                harvestedAt.atZone(KST));
 
         return String.format("%d일 %d시간 %d분", duration.toDays(), duration.toHoursPart(), duration.toMinutesPart());
     }
@@ -575,35 +577,44 @@ public class InsightService {
     }
 
     // 일일 피드백 종합 분석
-    private DailyStatsSummary analyzeDailyFeedbacks(List<DailyFeedback> dailyFeedbacks) {
-        if (dailyFeedbacks == null || dailyFeedbacks.isEmpty()) {
-            return new DailyStatsSummary("생육 모드로 안정 관리", 0, 0, 0, 100, 100, "병충해 없음(정상)", "전 기간 안정 유지", "일일 피드백 이력 없음");
-        }
-
+    private DailyStatsSummary analyzeDailyFeedbacks(
+            List<DailyFeedback> dailyFeedbacks,
+            Long cultivationId,
+            LocalDateTime startedAt,
+            LocalDateTime harvestedAt
+    ) {
         NotificationAccumulator accumulator = new NotificationAccumulator();
         String modeSwitchInfo = "생육기 모드 유지";
         boolean diseaseDetected = false;
         StringBuilder excerpts = new StringBuilder();
 
-        for (int i = 0; i < dailyFeedbacks.size(); i++) {
-            DailyFeedback df = dailyFeedbacks.get(i);
-            JsonNode snapshot = df.getContextSnapshot();
+        int totalDays = 1;
+        if (dailyFeedbacks != null && !dailyFeedbacks.isEmpty()) {
+            totalDays = dailyFeedbacks.size();
+            for (int i = 0; i < dailyFeedbacks.size(); i++) {
+                DailyFeedback df = dailyFeedbacks.get(i);
+                JsonNode snapshot = df.getContextSnapshot();
 
-            modeSwitchInfo = detectModeSwitch(snapshot, i + 1, df.getFeedbackDate().toString(), modeSwitchInfo);
-            accumulator.accumulate(snapshot);
-            diseaseDetected = diseaseDetected || isDiseaseDetected(snapshot);
-            appendSampleSummary(excerpts, df, i, dailyFeedbacks.size());
+                modeSwitchInfo = detectModeSwitch(snapshot, i + 1, df.getFeedbackDate().toString(), modeSwitchInfo);
+                accumulator.accumulate(snapshot);
+                diseaseDetected = diseaseDetected || isDiseaseDetected(snapshot);
+                appendSampleSummary(excerpts, df, i, dailyFeedbacks.size());
+            }
+        } else {
+            // Daily_feedback이 0건인 경우(당일 수확 등) Notification_server 직접 호출
+            fetchDirectFromNotificationServer(accumulator, cultivationId, startedAt, harvestedAt);
+            excerpts.append("- 일일 피드백 이력 없음(수확 당일 집계 또는 즉시 수확)");
         }
 
         String diseaseStatus = diseaseDetected ? "재배 중 병충해 의심 징후 감지됨" : "재배 전 기간 병충해 0건(건강 상태 유지)";
         String stableDays = String.format("총 %d일 중 %d일간 안정 유지",
-                dailyFeedbacks.size(), Math.max(1, dailyFeedbacks.size() - (accumulator.thresholdAlerts > 0 ? 1 : 0)));
+                totalDays, Math.max(1, totalDays - (accumulator.thresholdAlerts > 0 ? 1 : 0)));
 
         int totalActuatorAttempts = accumulator.thresholdAlerts + accumulator.actuatorSuccess;
         int actuatorSuccessRate = totalActuatorAttempts > 0 ? (accumulator.actuatorSuccess * 100) / totalActuatorAttempts : 100;
 
-        int stableDaysCount = Math.max(0, dailyFeedbacks.size() - (accumulator.thresholdAlerts > 0 ? 1 : 0));
-        int stableDaysRate = !dailyFeedbacks.isEmpty() ? (stableDaysCount * 100) / dailyFeedbacks.size() : 100;
+        int stableDaysCount = Math.max(0, totalDays - (accumulator.thresholdAlerts > 0 ? 1 : 0));
+        int stableDaysRate = (stableDaysCount * 100) / totalDays;
 
         return new DailyStatsSummary(
                 modeSwitchInfo, accumulator.totalEvents, accumulator.thresholdAlerts,
@@ -663,11 +674,40 @@ public class InsightService {
         void accumulate(JsonNode snapshot) {
             if (snapshot != null && snapshot.has("notificationMetrics")) {
                 JsonNode nm = snapshot.get("notificationMetrics");
-                // 실제 DTO 규격 키 우선 조회 + 하위 호환 지원
-                this.totalEvents += nm.path("totalNotificationCount").asInt(nm.path("totalEvents").asInt(0));
-                this.thresholdAlerts += nm.path("thresholdBreachAlertCount").asInt(nm.path("ruleEngineCooldownThresholdEvents").asInt(0));
-                this.actuatorSuccess += nm.path("actuatorControlSucceededCount").asInt(nm.path("actuatorControlSuccessEvents").asInt(0));
+                // 다양한 필드명에 대응할 수 있도록 방어적 탐색
+                this.totalEvents += getFirstInt(nm, "totalNotificationCount", "totalEvents", "totalCount");
+                this.thresholdAlerts += getFirstInt(nm, "thresholdBreachAlertCount", "thresholdAlerts", "thresholdBreachedCount",
+                        "ruleEngineCooldownThresholdEvents");
+                this.actuatorSuccess += getFirstInt(nm, "actuatorControlSucceededCount", "actuatorSuccessCount", "actuatorControlSuccessEvents",
+                        "actuatorSuccess");
             }
+        }
+
+        // Notification Server 응답 DTO 직접 누적
+        void accumulateFromSummary(site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryResponse summary) {
+            if (summary == null) return;
+            if (summary.totalCount() != null) {
+                this.totalEvents += summary.totalCount().intValue();
+            }
+            if (summary.eventCounts() != null) {
+                for (var ec : summary.eventCounts()) {
+                    String code = ec.eventTypeCode() != null ? ec.eventTypeCode().toUpperCase() : "";
+                    if (code.contains("THRESHOLD") || code.contains("BREACH")) {
+                        this.thresholdAlerts += ec.count().intValue();
+                    } else if (code.contains("ACTUATOR") && (code.contains("SUCCEED") || code.contains("SUCCESS"))) {
+                        this.actuatorSuccess += ec.count().intValue();
+                    }
+                }
+            }
+        }
+
+        private int getFirstInt(JsonNode node, String... keys) {
+            for (String key : keys) {
+                if (node.has(key) && !node.get(key).isNull()) {
+                    return node.get(key).asInt(0);
+                }
+            }
+            return 0;
         }
     }
 
@@ -838,5 +878,52 @@ public class InsightService {
                 .limit(5)
                 .map(InsightCandidateResponse::from)
                 .toList();
+    }
+    // Notification_server를 직접 호출하여 재배 기간 통계 누적
+    private void fetchDirectFromNotificationServer(
+            NotificationAccumulator accumulator,
+            Long cultivationId,
+            LocalDateTime startedAt,
+            LocalDateTime harvestedAt
+    ) {
+        if (notificationClient == null || cultivationId == null) return;
+        try {
+            LocalDate start = (startedAt != null) ? startedAt.toLocalDate() : LocalDate.now(KST);
+            LocalDate end = (harvestedAt != null) ? harvestedAt.toLocalDate() : LocalDate.now(KST);
+
+            accumulateDailyNotifications(accumulator, cultivationId, start, end);
+        } catch (Exception e) {
+            log.warn("Notification_server 직접 조회 실패 (cultivationId={})", cultivationId, e);
+        }
+    }
+
+    private void accumulateDailyNotifications(
+            NotificationAccumulator accumulator,
+            Long cultivationId,
+            LocalDate start,
+            LocalDate end
+    ) {
+        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+            fetchAndAccumulateSingleDate(accumulator, cultivationId, date);
+        }
+    }
+
+    private void fetchAndAccumulateSingleDate(
+            NotificationAccumulator accumulator,
+            Long cultivationId,
+            LocalDate date
+    ) {
+        site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryRequest req =
+                new site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryRequest(date, List.of(cultivationId));
+        site.yesaido.ai_server.dto.client.notification.DailyNotificationSummariesResponse res =
+                notificationClient.getDailySummaries(req);
+
+        if (res == null || res.summaries() == null) return;
+
+        for (site.yesaido.ai_server.dto.client.notification.DailyNotificationSummaryResponse summary : res.summaries()) {
+            if (summary != null && cultivationId.equals(summary.cultivationId())) {
+                accumulator.accumulateFromSummary(summary);
+            }
+        }
     }
 }

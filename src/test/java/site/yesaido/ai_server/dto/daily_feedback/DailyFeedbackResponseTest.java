@@ -72,6 +72,7 @@ class DailyFeedbackResponseTest {
                 "cultivationId",
                 "feedbackDate",
                 "hasVisionAnalysis",
+                "cultivationPhotoId",
                 "content",
                 "createdAt"
         ).doesNotContain("contextSnapshot");
