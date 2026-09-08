@@ -125,13 +125,13 @@ public class EnvironmentTool {
         if (compliance == null) {
             return "- 유지율 데이터를 계산 중입니다.\n";
         }
-        return String.format("- 온도 유지율: %s%%%n", formatPercent(compliance.temperatureCompliance()))
-                + String.format("- 습도 유지율: %s%%%n", formatPercent(compliance.humidityCompliance()))
-                + String.format("- CO2 유지율: %s%%%n", formatPercent(compliance.co2Compliance()))
-                + String.format("- 조도 유지율: %s%%%n", formatPercent(compliance.lightCompliance()));
+        return String.format("- 온도 유지율: %s%n", formatPercent(compliance.temperatureCompliance()))
+                + String.format("- 습도 유지율: %s%n", formatPercent(compliance.humidityCompliance()))
+                + String.format("- CO2 유지율: %s%n", formatPercent(compliance.co2Compliance()))
+                + String.format("- 조도 유지율: %s%n", formatPercent(compliance.lightCompliance()));
     }
 
     private String formatPercent(BigDecimal value) {
-        return value != null ? value.toPlainString() : "0.0";
+        return value != null ? value.toPlainString() + "%" : "미등록(데이터 없음)";
     }
 }
