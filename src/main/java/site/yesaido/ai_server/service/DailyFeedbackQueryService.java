@@ -47,9 +47,9 @@ public class DailyFeedbackQueryService {
      * @throws DailyFeedbackNotFoundException 재배지 또는 일일 피드백이
      *                                        존재하지 않는 경우
      */
-    public DailyFeedbackResponse getDailyFeedback(Long userId, Long cultivationId, LocalDate feedbackDate) {
+    public DailyFeedbackResponse getDailyFeedback(Long userId, String role, Long cultivationId, LocalDate feedbackDate) {
         validateRequest(userId, cultivationId, feedbackDate);
-        validateAccess(userId, cultivationId, feedbackDate);
+        validateAccess(userId, role, cultivationId, feedbackDate);
 
         return dailyFeedbackPersistenceService
                 .findExisting(cultivationId, feedbackDate)
@@ -65,11 +65,11 @@ public class DailyFeedbackQueryService {
         }
     }
 
-    private void validateAccess(Long userId, Long cultivationId, LocalDate feedbackDate) {
+    private void validateAccess(Long userId, String role, Long cultivationId, LocalDate feedbackDate) {
         CultivationDetailResponse response;
 
         try {
-            response = cultivationClient.getCultivation(userId, cultivationId);
+            response = cultivationClient.getCultivation(userId, role, cultivationId);
         } catch (FeignException.Forbidden ignored) {
             throw new UnauthorizedAccessException();
         } catch (FeignException.NotFound ignored) {

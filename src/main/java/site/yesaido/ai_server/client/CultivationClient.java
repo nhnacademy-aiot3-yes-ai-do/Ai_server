@@ -27,6 +27,11 @@ public interface CultivationClient {
     CultivationDetailResponse getCultivation(@RequestHeader("X-User-Id") Long userId,
                                              @PathVariable("cultivation-id") Long cultivationId);
 
+    @GetMapping("/cultivations/{cultivation-id}")
+    CultivationDetailResponse getCultivation(@RequestHeader("X-User-Id") Long userId,
+                                             @RequestHeader(value = "X-User-Role") String role,
+                                             @PathVariable("cultivation-id") Long cultivationId);
+
     /**
      * 일일 피드백에 필요한 재배 상세 응답 전체를 조회합니다.
      *

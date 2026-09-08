@@ -77,6 +77,7 @@ class DailyFeedbackControllerTest {
         given(
                 dailyFeedbackQueryService.getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 )
@@ -136,11 +137,63 @@ class DailyFeedbackControllerTest {
                 .should()
                 .getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 );
         then(dailyFeedbackQueryService)
                 .shouldHaveNoMoreInteractions();
+    }
+
+    @Test
+    @DisplayName("관리자(X-User-Role=ADMIN)가 조회하면 role이 그대로 전달된다")
+    void returnDailyFeedbackToAdminRole() throws Exception {
+        // 준비
+        Long adminId = 999L;
+        DailyFeedbackResponse response = new DailyFeedbackResponse(
+                DAILY_FEEDBACK_ID,
+                CULTIVATION_ID,
+                FEEDBACK_DATE,
+                true,
+                100L,
+                FEEDBACK_CONTENT,
+                CREATED_AT
+        );
+
+        given(
+                dailyFeedbackQueryService.getDailyFeedback(
+                        adminId,
+                        "ADMIN",
+                        CULTIVATION_ID,
+                        FEEDBACK_DATE
+                )
+        ).willReturn(response);
+
+        // 실행
+        ResultActions result = mockMvc.perform(
+                get(
+                        ENDPOINT,
+                        CULTIVATION_ID,
+                        FEEDBACK_DATE
+                ).header("X-User-Id", adminId)
+                        .header("X-User-Role", "ADMIN")
+        );
+
+        // 검증
+        result.andExpect(status().isOk())
+                .andExpect(
+                        jsonPath("$.data.dailyFeedbackId")
+                                .value(DAILY_FEEDBACK_ID)
+                );
+
+        then(dailyFeedbackQueryService)
+                .should()
+                .getDailyFeedback(
+                        adminId,
+                        "ADMIN",
+                        CULTIVATION_ID,
+                        FEEDBACK_DATE
+                );
     }
 
     @Test
@@ -200,6 +253,7 @@ class DailyFeedbackControllerTest {
         given(
                 dailyFeedbackQueryService.getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 )
@@ -226,6 +280,7 @@ class DailyFeedbackControllerTest {
                 .should()
                 .getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 );
@@ -241,6 +296,7 @@ class DailyFeedbackControllerTest {
         given(
                 dailyFeedbackQueryService.getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 )
@@ -276,6 +332,7 @@ class DailyFeedbackControllerTest {
                 .should()
                 .getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 );
@@ -299,6 +356,7 @@ class DailyFeedbackControllerTest {
         given(
                 dailyFeedbackQueryService.getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 )
@@ -331,6 +389,7 @@ class DailyFeedbackControllerTest {
                 .should()
                 .getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 );
@@ -345,6 +404,7 @@ class DailyFeedbackControllerTest {
         given(
                 dailyFeedbackQueryService.getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 )
@@ -377,6 +437,7 @@ class DailyFeedbackControllerTest {
                 .should()
                 .getDailyFeedback(
                         USER_ID,
+                        null,
                         CULTIVATION_ID,
                         FEEDBACK_DATE
                 );

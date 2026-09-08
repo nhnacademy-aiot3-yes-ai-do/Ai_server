@@ -49,12 +49,13 @@ public class DailyFeedbackController implements DailyFeedbackControllerDocs {
     public ResponseEntity<ApiResponse<DailyFeedbackResponse>>
     getDailyFeedback(
             @RequestHeader("X-User-Id") Long userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
             @PathVariable("cultivation-id") Long cultivationId,
             @PathVariable("feedback-date")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate feedbackDate
     ) {
-        DailyFeedbackResponse response = dailyFeedbackQueryService.getDailyFeedback(userId, cultivationId, feedbackDate);
+        DailyFeedbackResponse response = dailyFeedbackQueryService.getDailyFeedback(userId, role, cultivationId, feedbackDate);
 
         return ResponseEntity.ok(ApiResponse.success(response));
     }

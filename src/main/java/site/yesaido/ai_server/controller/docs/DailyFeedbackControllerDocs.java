@@ -20,6 +20,7 @@ public interface DailyFeedbackControllerDocs {
                     + "운영 응답에는 생성 근거 Context Snapshot을 포함하지 않습니다.")
     ResponseEntity<ApiResponse<DailyFeedbackResponse>> getDailyFeedback(
             Long userId,
+            String role,
             @Parameter(description = "재배 ID") Long cultivationId,
             @Parameter(description = "피드백 날짜 (yyyy-MM-dd)") LocalDate feedbackDate);
 }
