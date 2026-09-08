@@ -39,6 +39,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class DailyFeedbackQueryServiceTest {
 
     private static final Long USER_ID = 1L;
+    private static final String USER_ROLE = "USER";
     private static final Long CULTIVATION_ID = 10L;
     private static final Long OTHER_CULTIVATION_ID = 20L;
     private static final Long MUSHROOM_ID = 5L;
@@ -74,6 +75,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willReturn(cultivation);
@@ -88,6 +90,7 @@ class DailyFeedbackQueryServiceTest {
         // 실행
         DailyFeedbackResponse response = service.getDailyFeedback(
                 USER_ID,
+                USER_ROLE,
                 CULTIVATION_ID,
                 FEEDBACK_DATE
         );
@@ -110,12 +113,51 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should(inOrder)
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         then(dailyFeedbackPersistenceService)
                 .should(inOrder)
                 .findExisting(CULTIVATION_ID, FEEDBACK_DATE);
 
         inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    @DisplayName("관리자(ADMIN)는 재배 멤버가 아니어도 role이 그대로 전달되어 조회할 수 있다")
+    void returnStoredFeedbackForAdminRole() {
+        // 준비
+        Long adminId = 999L;
+        CultivationDetailResponse cultivation =
+                validCultivationResponse(CULTIVATION_ID);
+        DailyFeedback feedback = storedFeedback();
+
+        given(
+                cultivationClient.getCultivation(
+                        adminId,
+                        "ADMIN",
+                        CULTIVATION_ID
+                )
+        ).willReturn(cultivation);
+
+        given(
+                dailyFeedbackPersistenceService.findExisting(
+                        CULTIVATION_ID,
+                        FEEDBACK_DATE
+                )
+        ).willReturn(Optional.of(feedback));
+
+        // 실행
+        DailyFeedbackResponse response = service.getDailyFeedback(
+                adminId,
+                "ADMIN",
+                CULTIVATION_ID,
+                FEEDBACK_DATE
+        );
+
+        // 검증
+        assertThat(response.dailyFeedbackId()).isEqualTo(DAILY_FEEDBACK_ID);
+        then(cultivationClient)
+                .should()
+                .getCultivation(adminId, "ADMIN", CULTIVATION_ID);
     }
 
     @ParameterizedTest
@@ -134,6 +176,7 @@ class DailyFeedbackQueryServiceTest {
                         InvalidDailyFeedbackRequestException.class,
                         () -> service.getDailyFeedback(
                                 userId,
+                                USER_ROLE,
                                 cultivationId,
                                 feedbackDate
                         )
@@ -166,6 +209,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willThrow(forbidden);
@@ -176,6 +220,7 @@ class DailyFeedbackQueryServiceTest {
                         UnauthorizedAccessException.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -186,7 +231,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         verifyNoInteractions(dailyFeedbackPersistenceService);
     }
 
@@ -205,6 +250,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willThrow(notFound);
@@ -215,6 +261,7 @@ class DailyFeedbackQueryServiceTest {
                         DailyFeedbackNotFoundException.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -230,7 +277,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         verifyNoInteractions(dailyFeedbackPersistenceService);
     }
 
@@ -249,6 +296,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willThrow(externalFailure);
@@ -259,6 +307,7 @@ class DailyFeedbackQueryServiceTest {
                         FeignException.InternalServerError.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -269,7 +318,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         verifyNoInteractions(dailyFeedbackPersistenceService);
     }
 
@@ -280,6 +329,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willReturn(null);
@@ -290,6 +340,7 @@ class DailyFeedbackQueryServiceTest {
                         IllegalStateException.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -301,7 +352,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         verifyNoInteractions(dailyFeedbackPersistenceService);
     }
 
@@ -315,6 +366,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willReturn(mismatchedResponse);
@@ -325,6 +377,7 @@ class DailyFeedbackQueryServiceTest {
                         IllegalStateException.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -338,7 +391,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         verifyNoInteractions(dailyFeedbackPersistenceService);
     }
 
@@ -352,6 +405,7 @@ class DailyFeedbackQueryServiceTest {
         given(
                 cultivationClient.getCultivation(
                         USER_ID,
+                        USER_ROLE,
                         CULTIVATION_ID
                 )
         ).willReturn(cultivation);
@@ -369,6 +423,7 @@ class DailyFeedbackQueryServiceTest {
                         DailyFeedbackNotFoundException.class,
                         () -> service.getDailyFeedback(
                                 USER_ID,
+                                USER_ROLE,
                                 CULTIVATION_ID,
                                 FEEDBACK_DATE
                         )
@@ -384,7 +439,7 @@ class DailyFeedbackQueryServiceTest {
 
         then(cultivationClient)
                 .should()
-                .getCultivation(USER_ID, CULTIVATION_ID);
+                .getCultivation(USER_ID, USER_ROLE, CULTIVATION_ID);
         then(dailyFeedbackPersistenceService)
                 .should()
                 .findExisting(CULTIVATION_ID, FEEDBACK_DATE);
