@@ -33,7 +33,7 @@ public class RabbitMQConfig {
         DefaultJacksonJavaTypeMapper typeMapper = new DefaultJacksonJavaTypeMapper();
         // 헤더의 __TypeId__ 클래스명 대신 @RabbitListener 메서드의 파라미터 타입으로 우선 역직렬화
         typeMapper.setTypePrecedence(TypePrecedence.INFERRED);
-        typeMapper.addTrustedPackages("*");
+        typeMapper.addTrustedPackages("site.yesaido.ai_server.rabbitmq.event");
 
         // 혹시 모를 타입 ID 폴백 매핑
         Map<String, Class<?>> idClassMapping = new HashMap<>();
