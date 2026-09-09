@@ -13,6 +13,8 @@ import site.yesaido.ai_server.dto.client.sensor.EnvironmentComplianceResponse;
 import site.yesaido.ai_server.dto.client.sensor.SensorTypeAverageListResponse;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -84,20 +86,25 @@ public class EnvironmentTool {
                 return String.format("ID %d번에 해당하는 재배지 정보를 찾을 수 없습니다.", cultivationId);
             }
             SensorTypeAverageListResponse avgSensors = cultivationClient.getSensorValuesAverage(cultivationId, userId);
-            EnvironmentComplianceResponse compliance = cultivationClient.getEnvironmentCompliance(cultivationId, userId);
 
-            return """                                                                                                                                                                                                                                           
-            [재배지 기본 정보]
-            - 재배지 ID: %d | 버섯 ID: %d | 모드: %s
-            
-            [실시간 센서 평균값]
-            %s
-            [환경 적정 유지율]
-            %s
-            """.formatted(
+            EnvironmentComplianceResponse dailyCompliance = fetchDailyCompliance(cultivationId, userId);
+            EnvironmentComplianceResponse totalCompliance = fetchTotalCompliance(cultivationId, userId);
+
+            return """
+                [재배지 기본 정보]
+                - 재배지 ID: %d | 버섯 ID: %d | 모드: %s
+
+                [실시간 센서 평균값]
+                %s
+                [오늘 환경 적정 유지율 (상세페이지 게이지바 기준: 오늘 00:00~현재)]
+                %s
+                [전체 재배 기간 누적 유지율 (재배 시작일~현재 기준)]
+                %s
+                """.formatted(
                     cult.cultivationId(), cult.mushroomId(), cult.mode(),
                     formatSensorAverages(avgSensors),
-                    formatCompliance(compliance)
+                    formatCompliance(dailyCompliance),
+                    formatCompliance(totalCompliance)
             );
 
         } catch (feign.FeignException.NotFound e) {
@@ -133,5 +140,24 @@ public class EnvironmentTool {
 
     private String formatPercent(BigDecimal value) {
         return value != null ? value.toPlainString() + "%" : "미등록(데이터 없음)";
+    }
+
+    private EnvironmentComplianceResponse fetchDailyCompliance(Long cultivationId, Long userId) {
+        try {
+            LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+            return cultivationClient.getDailyEnvironmentCompliance(cultivationId, today, userId);
+        } catch (Exception e) {
+            log.warn("오늘 환경 유지율 조회 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private EnvironmentComplianceResponse fetchTotalCompliance(Long cultivationId, Long userId) {
+        try {
+            return cultivationClient.getEnvironmentCompliance(cultivationId, userId);
+        } catch (Exception e) {
+            log.warn("전체 누적 환경 유지율 조회 실패: {}", e.getMessage());
+            return null;
+        }
     }
 }
