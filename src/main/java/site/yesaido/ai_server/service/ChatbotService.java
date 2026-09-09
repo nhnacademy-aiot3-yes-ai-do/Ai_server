@@ -131,10 +131,17 @@ public class ChatbotService {
     private ChatConversation getOrCreateConversation(Long userId, Long cultivationId, Long channelId, Long conversationId) {
         Long targetChannel = channelId != null ? channelId : 1L; // 기본값: 웹(1L)
 
-        // 요청에 명시적인 conversationId가 전달된 경우 해당 방을 즉시 재사용
+        // 요청에 명시적인 conversationId가 전달된 경우 검증 후 재사용
         if (conversationId != null) {
-            return conversationRepository.findByIdAndUserId(conversationId, userId)
+            ChatConversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
                     .orElseThrow(() -> new IllegalArgumentException("해당 대화방에 접근할 수 없거나 존재하지 않습니다. ID: " + conversationId));
+
+            // 클라이언트가 이전 재배지의 conversationId를 보냈더라도, 현재 cultivationId와 다르면 해당 재배지의 방으로 교체
+            if (cultivationId != null && !java.util.Objects.equals(cultivationId, conversation.getCultivationId())) {
+                return conversationRepository.findLatestByCultivation(userId, cultivationId, targetChannel)
+                        .orElseGet(() -> createNewConversation(userId, cultivationId, targetChannel));
+            }
+            return conversation;
         }
 
         // 특정 경작지 대화방이면 해당 채널/경작지 기준 가장 최근 대화방 조회
