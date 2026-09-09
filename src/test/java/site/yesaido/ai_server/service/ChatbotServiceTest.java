@@ -227,4 +227,49 @@ class ChatbotServiceTest {
 
         assertThat(response.reply()).isEqualTo("답변입니다.");
     }
+
+    @Test
+    @DisplayName("chat - conversationId의 재배지와 요청의 cultivationId가 다를 경우 현재 재배지 대화방으로 전환 검증")
+    void chat_switchesConversationWhenCultivationIdMismatches() {
+        // Given: 이전 대화방 1번은 6번 재배지(표고버섯)
+        ChatConversation oldConv = ChatConversation.builder()
+                .userId(22L)
+                .cultivationId(6L)
+                .channelId(1L)
+                .externalConversationId("sess-old")
+                .build();
+        ReflectionTestUtils.setField(oldConv, "id", 1L);
+
+        // 클라이언트가 1번 대화방 ID를 들고 4번 재배지(양송이)에서 질문을 전송
+        ChatMessageRequest request = new ChatMessageRequest(1L, 4L, "양송이 센서 알려줘", 1L);
+
+        // 4번 재배지 전용 대화방 2번
+        ChatConversation currentConv = ChatConversation.builder()
+                .userId(22L)
+                .cultivationId(4L)
+                .channelId(1L)
+                .externalConversationId("sess-new")
+                .build();
+        ReflectionTestUtils.setField(currentConv, "id", 2L);
+
+        when(conversationRepository.findByIdAndUserId(1L, 22L)).thenReturn(Optional.of(oldConv));
+        when(conversationRepository.findLatestByCultivation(22L, 4L, 1L)).thenReturn(Optional.of(currentConv));
+        when(messageRepository.findMaxSequenceNumber(2L)).thenReturn(0L, 1L);
+
+        ChatMessage savedUser = ChatMessage.builder().chatConversationId(2L).role(MessageRole.USER).content("양송이 센서 알려줘").sequenceNumber(1L).
+                build();
+        ChatMessage savedAi = ChatMessage.builder().chatConversationId(2L).role(MessageRole.ASSISTANT).content("양송이 답변입니다.").sequenceNumber(2L).
+                build();
+        when(messageRepository.save(any(ChatMessage.class))).thenReturn(savedUser, savedAi);
+        when(messageRepository.findTop10ByChatConversationIdOrderBySequenceNumberDesc(2L)).thenReturn(List.of());
+
+        mockGeminiSuccess("양송이 답변입니다.");
+
+        // When
+        ChatMessageResponse response = chatbotService.chat(22L, request);
+
+        // Then: 1번 방(표고버섯)이 아니라 4번 재배지 전용 대화방(2번)으로 스위칭되어 저장되었는지 확인
+        assertThat(response.conversationId()).isEqualTo(2L);
+        assertThat(response.reply()).isEqualTo("양송이 답변입니다.");
+    }
 }
