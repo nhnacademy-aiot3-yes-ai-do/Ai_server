@@ -5,6 +5,12 @@ import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.amqp.support.converter.DefaultJacksonJavaTypeMapper;
+import org.springframework.amqp.support.converter.JacksonJavaTypeMapper.TypePrecedence;
+import site.yesaido.ai_server.rabbitmq.event.AiEvent.HarvestCompletedEvent;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
 
@@ -24,7 +30,20 @@ public class RabbitMQConfig {
 
     @Bean // 자바 객체 JSON 변환
     public MessageConverter messageConverter() {
-        return new JacksonJsonMessageConverter();
+        DefaultJacksonJavaTypeMapper typeMapper = new DefaultJacksonJavaTypeMapper();
+        // 헤더의 __TypeId__ 클래스명 대신 @RabbitListener 메서드의 파라미터 타입으로 우선 역직렬화
+        typeMapper.setTypePrecedence(TypePrecedence.INFERRED);
+        typeMapper.addTrustedPackages("*");
+
+        // 혹시 모를 타입 ID 폴백 매핑
+        Map<String, Class<?>> idClassMapping = new HashMap<>();
+        idClassMapping.put("site.yesaido.cultivation_server.rabbitmq.event.AiHarvestEvent", HarvestCompletedEvent.class);
+        idClassMapping.put("aiHarvestEvent", HarvestCompletedEvent.class);
+        typeMapper.setIdClassMapping(idClassMapping);
+
+        JacksonJsonMessageConverter converter = new JacksonJsonMessageConverter();
+        converter.setJavaTypeMapper(typeMapper);
+        return converter;
     }
 
     // 공통 Dead Letter Exchange
