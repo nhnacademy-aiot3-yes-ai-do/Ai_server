@@ -85,7 +85,7 @@ feign:
       url: ${NOTIFICATION_SERVER_URL}
 
 image-download:
-  allowed-origin: ${MINIO_URL}
+  allowed-origin: ${IMAGE_DOWNLOAD_ALLOWED_ORIGIN:https://yes-nhn.site}
 
 daily-feedback:
   outbox:
