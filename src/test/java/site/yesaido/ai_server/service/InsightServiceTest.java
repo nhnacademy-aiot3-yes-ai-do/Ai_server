@@ -350,28 +350,31 @@ class InsightServiceTest {
     }
 
     @Test
-    @DisplayName("환경 데이터 및 센서 평균 조회 실패(0건) 시 인사이트 생성을 스킵하고 null 반환 검증")
+    @DisplayName("환경 데이터 및 센서 평균 조회 실패 시에도 기본 정보로 인사이트를 정상 적재하는지 검증")
     void saveInsight_ComplianceExceptionFallback() {
+        setUpMockChatClient("느타리버섯 요약문");
         when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
         when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // 환경 데이터 조회 시 첫 번째 호출에서 에러 발생 가정 (catch로 넘어가 센서 데이터가 null이 됨)
         when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenThrow(new RuntimeException("Feign 에러"));
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        // 센서 데이터가 없으므로 저장을 스킵하고 null을 반환해야 함
-        assertThat(response).isNull();
-        verify(insightRepository, never()).save(any());
+        assertThat(response).isNotNull();
+        verify(insightRepository, times(1)).save(any(Insight.class));
     }
 
     @Test
-    @DisplayName("센서 측정 데이터와 환경 유지율이 전혀 없을 때 인사이트 적재를 안전하게 건너뛰는지(Skip) 검증")
-    void saveInsight_SkipWhenNoSensorData() {
+    @DisplayName("센서 측정 데이터와 환경 유지율이 전혀 없을 때도 수확 정보 기반으로 인사이트를 정상 적재하는지 검증")
+    void saveInsight_SuccessWhenNoSensorData() {
+        setUpMockChatClient("느타리버섯 요약문");
         when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
         when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // 센서 데이터가 0건(null)인 상태
         when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(null);
@@ -379,8 +382,8 @@ class InsightServiceTest {
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        assertThat(response).isNull();
-        verify(insightRepository, never()).save(any());
+        assertThat(response).isNotNull();
+        verify(insightRepository, times(1)).save(any(Insight.class));
     }
 
     @Test
@@ -729,11 +732,13 @@ class InsightServiceTest {
     }
 
     @Test
-    @DisplayName("유지율 DTO 객체는 존재하지만 4대 유지율 필드가 전부 null이고 센서 평균 데이터도 없으면 인사이트 생성을 스킵하고 null 반환 검증")
-    void saveInsight_SkipWhenComplianceFieldsAllNullAndNoSensorAverages() {
+    @DisplayName("유지율 및 센서 평균 데이터가 없어도 수확량 기반으로 인사이트를 생성하여 저장한다")
+    void saveInsight_SuccessWhenComplianceFieldsAllNullAndNoSensorAverages() {
+        setUpMockChatClient("느타리버섯 인사이트 요약문");
         when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
         when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
         when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // compliance 객체는 있으나 4대 필드가 전부 null, 센서 평균은 빈 리스트
         EnvironmentComplianceResponse allNullCompliance = new EnvironmentComplianceResponse(null, null, null, null);
@@ -742,8 +747,15 @@ class InsightServiceTest {
 
         InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
 
-        assertThat(response).isNull();
-        verify(insightRepository, never()).save(any());
+        assertThat(response).isNotNull();
+        ArgumentCaptor<Insight> captor = ArgumentCaptor.forClass(Insight.class);
+        verify(insightRepository).save(captor.capture());
+        Insight saved = captor.getValue();
+        assertThat(saved.getAvgTemperature()).isNull();
+        assertThat(saved.getAvgHumidity()).isNull();
+        assertThat(saved.getAvgCo2()).isNull();
+        assertThat(saved.getAvgLight()).isNull();
+        assertThat(saved.getHarvestWeightGrams()).isEqualByComparingTo("400.0");
     }
 
     @Test

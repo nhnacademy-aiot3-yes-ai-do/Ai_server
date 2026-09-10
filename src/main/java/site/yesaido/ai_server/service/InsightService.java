@@ -119,11 +119,6 @@ public class InsightService {
             sensorAverages = (averageResponse != null) ? averageResponse.sensorTypeAverages() : null;
         } catch (Exception e) {
             log.warn("환경 유지율 및 센서 평균 조회 실패 (cultivationId={})", cultivationId, e);
-        } // 센서 평균 데이터, 유지율 둘 다 없으면 인사이트 생성 스킵하고 종료하게 추가
-        // 유효한 센서 데이터가 전혀 없으면 인사이트 생성을 스킵하고 종료
-        if (!hasValidSensorData(sensorAverages, compliance)) {
-            log.warn("유효한 센서 측정 데이터가 존재하지 않아 인사이트 생성을 건너뜁니다. (cultivationId={})", cultivationId);
-            return null;
         }
 
         // [컴파일 에러 해결 및 더미값 제거] 실제 센서 평균값 추출 (없으면 null)
@@ -414,17 +409,6 @@ public class InsightService {
             return Math.max(0.0, totalScore - 5.0);
         }
         return totalScore;
-    }
-    // 유효한 센서 데이터 있는지 검사(평균값 목록 최소 1개 이상)
-    private boolean hasValidSensorData(List<SensorTypeAverageResponse> sensorAverages, EnvironmentComplianceResponse compliance) {
-        boolean hasAverages = sensorAverages != null && !sensorAverages.isEmpty();
-        boolean hasCompliance = compliance != null && (
-                compliance.temperatureCompliance() != null ||
-                        compliance.humidityCompliance() != null ||
-                        compliance.co2Compliance() != null ||
-                        compliance.lightCompliance() != null
-        );
-        return hasAverages || hasCompliance;
     }
 
     // 센서 평균 목록에서 특정 센서 타입의 평균값을 찾아 BigDecimal로 반환 (없으면 null)
