@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import site.yesaido.ai_server.entity.Insight;
 import site.yesaido.ai_server.repository.InsightRepository;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Slf4j
@@ -30,17 +31,7 @@ public class PastHarvestInsightTool {
             StringBuilder sb = new StringBuilder(String.format("[과거 우수 수확 성공 사례 TOP %d]%n", topInsights.size()));
             int rank = 1;
             for (Insight insight : topInsights) {
-                sb.append(String.format("%d. [수확량: %s g | 환경 점수: %d점]%n", rank++,
-                        insight.getHarvestWeightGrams() != null ? insight.getHarvestWeightGrams().toPlainString() : "0.0",
-                        insight.getGrowthScore() != null ? insight.getGrowthScore() : 0));
-
-                sb.append(String.format("- 평균 환경: 온도 %s℃ | 습도 %s%% | CO2 %s ppm | 조도 %s lx%n",
-                        insight.getAvgTemperature(), insight.getAvgHumidity(), insight.getAvgCo2(), insight.getAvgLight()));
-
-                if (insight.getSummary() != null && !insight.getSummary().isBlank()) {
-                    sb.append(String.format("- AI 성공 분석: %s%n", insight.getSummary()));
-                }
-                sb.append(String.format("%n"));
+                appendInsightItem(sb, rank++, insight);
             }
 
             return sb.toString();
@@ -52,5 +43,26 @@ public class PastHarvestInsightTool {
             log.error("과거 수확 인사이트 조회 중 예상치 못한 오류 발생: {}", e.getMessage(), e);
             return "과거 수확 데이터를 조회하는 중 일시적인 오류가 발생했습니다.";
         }
+    }
+
+    private void appendInsightItem(StringBuilder sb, int rank, Insight insight) {
+        String weight = (insight.getHarvestWeightGrams() != null) ? insight.getHarvestWeightGrams().toPlainString() : "0.0";
+        int score = (insight.getGrowthScore() != null) ? insight.getGrowthScore() : 0;
+        sb.append(String.format("%d. [수확량: %s g | 환경 점수: %d점]%n", rank, weight, score));
+
+        sb.append(String.format("- 평균 환경: 온도 %s℃ | 습도 %s%% | CO2 %s ppm | 조도 %s lx%n",
+                formatValue(insight.getAvgTemperature()),
+                formatValue(insight.getAvgHumidity()),
+                formatValue(insight.getAvgCo2()),
+                formatValue(insight.getAvgLight())));
+
+        if (insight.getSummary() != null && !insight.getSummary().isBlank()) {
+            sb.append(String.format("- AI 성공 분석: %s%n", insight.getSummary()));
+        }
+        sb.append(String.format("%n"));
+    }
+
+    private String formatValue(BigDecimal value) {
+        return (value != null) ? value.toPlainString() : "-";
     }
 }

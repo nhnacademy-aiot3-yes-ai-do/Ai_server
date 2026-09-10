@@ -29,16 +29,16 @@ public class Insight {
     @Column(name = "mushroom_id", nullable = false)
     private Long mushroomId; // 버섯 참조 ID
 
-    @Column(name = "avg_temperature", nullable = false, precision = 5, scale = 2)
+    @Column(name = "avg_temperature", precision = 5, scale = 2)
     private BigDecimal avgTemperature;
 
-    @Column(name = "avg_humidity", nullable = false, precision = 5, scale = 2)
+    @Column(name = "avg_humidity", precision = 5, scale = 2)
     private BigDecimal avgHumidity;
 
-    @Column(name = "avg_co2", nullable = false, precision = 8, scale = 2)
+    @Column(name = "avg_co2", precision = 8, scale = 2)
     private BigDecimal avgCo2;
 
-    @Column(name = "avg_light", nullable = false, precision = 6, scale = 2)
+    @Column(name = "avg_light", precision = 6, scale = 2)
     private BigDecimal avgLight;
 
     @Column(name = "harvest_weight_grams", nullable = false, precision = 6, scale = 2)
