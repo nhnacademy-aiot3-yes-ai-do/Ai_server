@@ -33,6 +33,12 @@ public interface InsightRepository extends JpaRepository<Insight,Long> {
             and (:#{#cond.minHum} is null or i.avgHumidity is null or i.avgHumidity between :#{#cond.minHum} and :#{#cond.maxHum})
             and (:#{#cond.minCo2} is null or i.avgCo2 is null or i.avgCo2 between :#{#cond.minCo2} and :#{#cond.maxCo2})
             and (:#{#cond.minLight} is null or i.avgLight is null or i.avgLight between :#{#cond.minLight} and :#{#cond.maxLight})
+            and (
+                (:#{#cond.minTemp} is not null and i.avgTemperature between :#{#cond.minTemp} and :#{#cond.maxTemp})
+                or (:#{#cond.minHum} is not null and i.avgHumidity between :#{#cond.minHum} and :#{#cond.maxHum})
+                or (:#{#cond.minCo2} is not null and i.avgCo2 between :#{#cond.minCo2} and :#{#cond.maxCo2})
+                or (:#{#cond.minLight} is not null and i.avgLight between :#{#cond.minLight} and :#{#cond.maxLight})
+            )
             and i.cultivationId not in :#{#cond.myCultivationIds}
         order by i.createdAt desc
     """)
