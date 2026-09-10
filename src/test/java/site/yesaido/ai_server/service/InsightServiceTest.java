@@ -384,6 +384,59 @@ class InsightServiceTest {
     }
 
     @Test
+    @DisplayName("센서가 수확 시점에 삭제되어 센서 평균이 비어있더라도 환경 유지율이 있으면 인사이트가 null 센서 필드로 정상 적재되는지 검증")
+    void saveInsight_SuccessWithEmptySensorAveragesAndValidCompliance() {
+        setUpMockChatClient("느타리버섯 요약문");
+        when(insightRepository.findByCultivationId(1L)).thenReturn(Optional.empty());
+        when(cultivationClient.getCultivation(100L, 1L)).thenReturn(mockCultivation);
+        when(cultivationClient.getHarvest(1L, 100L)).thenReturn(mockHarvest);
+
+        // 유지율은 존재
+        EnvironmentComplianceResponse mockCompliance = new EnvironmentComplianceResponse(
+                new BigDecimal("95.00"), new BigDecimal("85.00"), null, null
+        );
+        when(cultivationClient.getEnvironmentCompliance(1L, 100L)).thenReturn(mockCompliance);
+        // 센서 평균은 수확 후 삭제로 인해 빈 리스트
+        when(cultivationClient.getSensorValuesAverage(1L, 100L)).thenReturn(new SensorTypeAverageListResponse(List.of()));
+
+        when(insightRepository.save(any(Insight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        InsightCandidateResponse response = insightService.saveHarvestInsight(1L, 100L);
+
+        assertThat(response).isNotNull();
+        verify(insightRepository).save(argThat(saved ->
+                saved.getAvgTemperature() == null &&
+                        saved.getAvgHumidity() == null &&
+                        saved.getAvgCo2() == null &&
+                        saved.getAvgLight() == null &&
+                        saved.getGrowthScore() != null &&
+                        saved.getGrowthScore() > 0
+        ));
+    }
+
+    @Test
+    @DisplayName("일부 센서 파라미터만 전달되었을 때 NPE 없이 유사 후보 검색이 정상 호출되는지 검증")
+    void searchSimilarCandidates_withPartialSensors_success() {
+        when(cultivationClient.getCultivations(100L)).thenReturn(null);
+        when(insightRepository.findSimilarCandidates(any(InsightSearchCondition.class), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        List<InsightCandidateResponse> result = insightService.getInsightCandidates(
+                100L, 2L,
+                new BigDecimal("20.00"), new BigDecimal("80.00"),
+                null, null
+        );
+
+        assertThat(result).isNotNull().isEmpty();
+        verify(insightRepository).findSimilarCandidates(argThat(cond ->
+                cond.minTemp() != null && cond.maxTemp() != null &&
+                        cond.minHum() != null && cond.maxHum() != null &&
+                        cond.minCo2() == null && cond.maxCo2() == null &&
+                        cond.minLight() == null && cond.maxLight() == null
+        ), any(Pageable.class));
+    }
+
+    @Test
     @DisplayName("인사이트 상세 조회 시 일자별 피드백 타임라인 목록이 정상 반환되는지 검증")
     void getInsightDetailTest() {
         Insight mockInsight = Insight.builder()

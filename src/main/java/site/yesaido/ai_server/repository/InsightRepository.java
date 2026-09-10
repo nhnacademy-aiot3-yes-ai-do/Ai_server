@@ -29,10 +29,10 @@ public interface InsightRepository extends JpaRepository<Insight,Long> {
     @Query("""
         select i from Insight i
         where i.mushroomId = :#{#cond.mushroomId}
-            and i.avgTemperature between :#{#cond.minTemp} and :#{#cond.maxTemp}                                                                                                                    \s
-            and i.avgHumidity between :#{#cond.minHum} and :#{#cond.maxHum}                                                                                                                         \s
-            and i.avgCo2 between :#{#cond.minCo2} and :#{#cond.maxCo2}                                                                                                                              \s
-            and i.avgLight between :#{#cond.minLight} and :#{#cond.maxLight}                                                                                                                        \s
+            and (:#{#cond.minTemp} is null or i.avgTemperature is null or i.avgTemperature between :#{#cond.minTemp} and :#{#cond.maxTemp})
+            and (:#{#cond.minHum} is null or i.avgHumidity is null or i.avgHumidity between :#{#cond.minHum} and :#{#cond.maxHum})
+            and (:#{#cond.minCo2} is null or i.avgCo2 is null or i.avgCo2 between :#{#cond.minCo2} and :#{#cond.maxCo2})
+            and (:#{#cond.minLight} is null or i.avgLight is null or i.avgLight between :#{#cond.minLight} and :#{#cond.maxLight})
             and i.cultivationId not in :#{#cond.myCultivationIds}
         order by i.createdAt desc
     """)

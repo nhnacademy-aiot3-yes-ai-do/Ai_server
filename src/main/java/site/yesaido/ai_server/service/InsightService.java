@@ -269,28 +269,19 @@ public class InsightService {
             BigDecimal targetCo2,
             BigDecimal targetLight
     ) {
-        BigDecimal tempOffset = new BigDecimal("2.00");
-        BigDecimal humOffset = new BigDecimal("5.00");
-        BigDecimal co2Offset = new BigDecimal("100.00");
-        BigDecimal lightOffset = new BigDecimal("50.00");
-
-        BigDecimal minTemp = targetTemp.subtract(tempOffset);
-        BigDecimal maxTemp = targetTemp.add(tempOffset);
-        BigDecimal minHum  = targetHum.subtract(humOffset);
-        BigDecimal maxHum  = targetHum.add(humOffset);
-        BigDecimal minCo2  = targetCo2.subtract(co2Offset);
-        BigDecimal maxCo2  = targetCo2.add(co2Offset);
-        BigDecimal minLight= targetLight.subtract(lightOffset);
-        BigDecimal maxLight= targetLight.add(lightOffset);
+        SensorRange tempRange = calculateOffsetRange(targetTemp, new BigDecimal("2.00"));
+        SensorRange humRange  = calculateOffsetRange(targetHum, new BigDecimal("5.00"));
+        SensorRange co2Range  = calculateOffsetRange(targetCo2, new BigDecimal("100.00"));
+        SensorRange lightRange= calculateOffsetRange(targetLight, new BigDecimal("50.00"));
 
         List<Long> myCultivationIds = getMyCultivation(userId);
 
         InsightSearchCondition condition = new InsightSearchCondition(
                 mushroomId,
-                minTemp, maxTemp,
-                minHum, maxHum,
-                minCo2, maxCo2,
-                minLight, maxLight,
+                tempRange.min(), tempRange.max(),
+                humRange.min(), humRange.max(),
+                co2Range.min(), co2Range.max(),
+                lightRange.min(), lightRange.max(),
                 myCultivationIds
         );
         List<Insight> candidates = insightRepository.findSimilarCandidates(
@@ -301,6 +292,16 @@ public class InsightService {
         return candidates.stream()
                 .map(InsightCandidateResponse::from)
                 .toList();
+    }
+
+    private record SensorRange(BigDecimal min, BigDecimal max) {}
+
+    // 목표값 기준 오차범위(±offset) 계산 (센서 미등록으로 target이 null이면 null 유지)
+    private SensorRange calculateOffsetRange(BigDecimal target, BigDecimal offset) {
+        if (target == null) {
+            return new SensorRange(null, null);
+        }
+        return new SensorRange(target.subtract(offset), target.add(offset));
     }
 
     // 검색 기록에서 내 Cultivation 조회 안되게 설정
@@ -810,7 +811,7 @@ public class InsightService {
             BigDecimal co2 = calculateMidpoint(thresholds, CO2);
             BigDecimal light = calculateMidpoint(thresholds, LIGHT);
 
-            if (temp != null && hum != null && co2 != null && light != null) {
+            if (temp != null || hum != null || co2 != null || light != null) {
                 return new TargetEnvironment(temp, hum, co2, light);
             }
         } catch (Exception e) {
@@ -899,9 +900,9 @@ public class InsightService {
         return new CultivationInfo(fallbackMushroomId, MODE_GROWTH);
     }
 
-    // 4대 필수 센서 파라미터 지정 여부 확인
+    // 센서 파라미터 지정 여부 확인 (일부 센서만 전달된 경우에도 유사 검색 시도)
     private boolean hasExplicitEnvironment(BigDecimal temp, BigDecimal hum, BigDecimal co2, BigDecimal light) {
-        return temp != null && hum != null && co2 != null && light != null;
+        return temp != null || hum != null || co2 != null || light != null;
     }
 
     // 모드별 기준 임계값 기반 유사 검색
