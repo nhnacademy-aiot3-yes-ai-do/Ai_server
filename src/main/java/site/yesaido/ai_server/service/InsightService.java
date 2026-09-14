@@ -41,6 +41,7 @@ public class InsightService {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final String NOTIFICATION_METRICS = "notificationMetrics";
     private static final String THRESHOLD_ALERT_COUNT = "thresholdAlertCount";
+    private static final String THRESHOLD_ALERTS = "thresholdAlerts";
     // Vision 병충해 판단
     private static final String STATUS_UNCERTAIN = "UNCERTAIN"; // 판정보류/애매 (-5점 페널티)
     private static final String STATUS_DISEASE_SUSPECTED = "DISEASE_SUSPECTED"; // 병해 감지 (즉시 폐기: 최대 30점 제한)
@@ -197,7 +198,7 @@ public class InsightService {
                             .param("sensorDataText", sensorDataText)
                             .param("additionalSensorsText", additionalSensorsText)
                             .param("totalEvents", dailyStats.totalEvents())
-                            .param("thresholdAlerts", dailyStats.thresholdAlerts())
+                            .param(THRESHOLD_ALERTS, dailyStats.thresholdAlerts())
                             .param("actuatorSuccessCount", dailyStats.actuatorSuccessCount())
                             .param("actuatorSuccessRate", dailyStats.actuatorSuccessRate())
                             .param("stableDaysRate", dailyStats.stableDaysRate())
@@ -618,15 +619,42 @@ public class InsightService {
     ) {
         fetchDirectFromNotificationServer(accumulator, cultivationId, startedAt, harvestedAt);
         excerpts.append("- 일일 피드백 이력 없음(수확 당일 집계 또는 즉시 수확)");
-        int stableDaysCount = (accumulator.thresholdAlerts == 0) ? 1 : 0;
+        int stableDaysCount = 0;
 
         return buildStatsSummary(accumulator, "생육기 모드 유지", false, 1, stableDaysCount, excerpts);
     }
 
     // 일자별 임계값 이탈 여부 판별
     private boolean isDayStable(JsonNode snapshot) {
-        if (snapshot == null) return false;
-        return snapshot.path(NOTIFICATION_METRICS).path(THRESHOLD_ALERT_COUNT).asInt(0) == 0;
+        if (snapshot == null) {
+            return false;
+        }
+
+        JsonNode metrics = snapshot.get(NOTIFICATION_METRICS);
+
+        // notificationMetrics 자체가 없으면 안정으로 판단하지 않음
+        if (metrics == null || !metrics.isObject()) {
+            return false;
+        }
+
+        String[] keys = {
+                "thresholdBreachAlertCount",
+                THRESHOLD_ALERT_COUNT,
+                THRESHOLD_ALERTS,
+                "thresholdBreachedCount",
+                "ruleEngineCooldownThresholdEvents"
+        };
+
+        for (String key : keys) {
+            JsonNode value = metrics.get(key);
+
+            if (value != null && !value.isNull()) {
+                return value.asLong(0) == 0;
+            }
+        }
+
+        // 임계값 이탈 필드가 없으면 안정으로 판단하지 않음
+        return false;
     }
 
     // 최종 통계 DTO 조립
@@ -705,7 +733,7 @@ public class InsightService {
                 JsonNode nm = snapshot.get(NOTIFICATION_METRICS);
                 // 다양한 필드명에 대응할 수 있도록 방어적 탐색
                 this.totalEvents += getFirstInt(nm, "totalNotificationCount", "totalEvents", "totalCount");
-                this.thresholdAlerts += getFirstInt(nm, "thresholdBreachAlertCount", "thresholdAlerts", "thresholdBreachedCount",
+                this.thresholdAlerts += getFirstInt(nm, "thresholdBreachAlertCount", THRESHOLD_ALERTS, "thresholdBreachedCount",
                         "ruleEngineCooldownThresholdEvents");
                 this.actuatorSuccess += getFirstInt(nm, "actuatorControlSucceededCount", "actuatorSuccessCount", "actuatorControlSuccessEvents",
                         "actuatorSuccess");
