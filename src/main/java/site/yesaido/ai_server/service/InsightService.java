@@ -645,16 +645,26 @@ public class InsightService {
                 "ruleEngineCooldownThresholdEvents"
         };
 
+        boolean found = false;
+
         for (String key : keys) {
             JsonNode value = metrics.get(key);
 
-            if (value != null && !value.isNull()) {
-                return value.asLong(0) == 0;
+            if (value == null || value.isNull()) {
+                continue;
+            }
+
+            found = true;
+
+            // 후보 키 중 하나라도 이탈(양수)이 존재하면 즉시 불안정(false) 판정
+            if (value.asLong(0) != 0) {
+                return false;
             }
         }
 
-        // 임계값 이탈 필드가 없으면 안정으로 판단하지 않음
-        return false;
+        // 임계값 이탈 필드가 1개 이상 존재하고, 모두 0일 때만 안정(true) 판정
+        // (임계값 필드가 전혀 없으면 found = false -> 안정으로 보지 않음)
+        return found;
     }
 
     // 최종 통계 DTO 조립
