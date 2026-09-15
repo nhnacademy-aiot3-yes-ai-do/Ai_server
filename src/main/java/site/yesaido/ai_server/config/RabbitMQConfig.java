@@ -3,11 +3,16 @@ package site.yesaido.ai_server.config;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.amqp.support.converter.DefaultJacksonJavaTypeMapper;
 import org.springframework.amqp.support.converter.JacksonJavaTypeMapper.TypePrecedence;
+import org.springframework.context.annotation.Import;
 import site.yesaido.ai_server.rabbitmq.event.AiEvent.HarvestCompletedEvent;
+import site.yesaido.common.rabbitmq.DeadLetterQueues;
+import site.yesaido.common.rabbitmq.DeadLetterTopologyConfiguration;
+import site.yesaido.common.rabbitmq.RabbitDeadLetterProperties;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +31,7 @@ import static site.yesaido.ai_server.rabbitmq.RabbitMqConstants.*;
  * {@link MessageConverter}만 Bean으로 제공합니다.</p>
  */
 @Configuration
+@Import(DeadLetterTopologyConfiguration.class)
 public class RabbitMQConfig {
 
     @Bean // 자바 객체 JSON 변환
@@ -46,28 +52,6 @@ public class RabbitMQConfig {
         return converter;
     }
 
-    // 공통 Dead Letter Exchange
-    @Bean
-    public FanoutExchange deadLetterExchange() {
-        return new FanoutExchange(DLX_NAME);
-    }
-
-    // 공통 Dead Letter Queue
-    @Bean
-    public Queue deadLetterQueue() {
-        return QueueBuilder
-                .durable(DLQ_QUEUE)
-                .build();
-    }
-
-    // DLX와 DLQ 연결
-    @Bean
-    public Binding deadLetterBinding() {
-        return BindingBuilder
-                .bind(deadLetterQueue())
-                .to(deadLetterExchange());
-    }
-
     // Cultivation -> AI 수확 완료 이벤트 Exchange
     @Bean
     public DirectExchange harvestExchange() {
@@ -76,18 +60,15 @@ public class RabbitMQConfig {
 
     // AI가 수확 이벤트를 받는 Queue
     @Bean
-    public Queue aiHarvestQueue() {
-        return QueueBuilder
-                .durable(AI_HARVEST_QUEUE)
-                .withArgument(DLX_KEY, DLX_NAME)
-                .build();
+    public Queue aiHarvestQueue(RabbitDeadLetterProperties dlProps) {
+        return DeadLetterQueues.durableWithDeadLetter(AI_HARVEST_QUEUE, dlProps).build();
     }
 
     // Exchange -> AI Queue 연결
     @Bean
-    public Binding aiHarvestBinding() {
+    public Binding aiHarvestBinding(@Qualifier("aiHarvestQueue") Queue aiHarvestQueue) {
         return BindingBuilder
-                .bind(aiHarvestQueue())
+                .bind(aiHarvestQueue)
                 .to(harvestExchange())
                 .with(AI_HARVEST_QUEUE);
     }

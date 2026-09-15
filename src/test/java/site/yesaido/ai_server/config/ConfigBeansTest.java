@@ -5,9 +5,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.DirectExchange;
-import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.support.converter.MessageConverter;
+import site.yesaido.common.rabbitmq.RabbitDeadLetterProperties;
 
 import java.util.concurrent.Executor;
 
@@ -38,26 +38,18 @@ class ConfigBeansTest {
     @DisplayName("RabbitMQConfig 빈 생성 및 바인딩 검증")
     void rabbitMQConfig() {
         RabbitMQConfig config = new RabbitMQConfig();
+        RabbitDeadLetterProperties dlProps = new RabbitDeadLetterProperties();
 
         MessageConverter converter = config.messageConverter();
         assertThat(converter).isNotNull();
 
-        FanoutExchange dlx = config.deadLetterExchange();
-        assertThat(dlx).isNotNull();
-
-        Queue dlq = config.deadLetterQueue();
-        assertThat(dlq).isNotNull();
-
-        Binding dlBinding = config.deadLetterBinding();
-        assertThat(dlBinding).isNotNull();
-
         DirectExchange harvestExchange = config.harvestExchange();
         assertThat(harvestExchange).isNotNull();
 
-        Queue aiHarvestQueue = config.aiHarvestQueue();
+        Queue aiHarvestQueue = config.aiHarvestQueue(dlProps);
         assertThat(aiHarvestQueue).isNotNull();
 
-        Binding aiHarvestBinding = config.aiHarvestBinding();
+        Binding aiHarvestBinding = config.aiHarvestBinding(aiHarvestQueue);
         assertThat(aiHarvestBinding).isNotNull();
 
         DirectExchange notiExchange = config.notificationExchange();
