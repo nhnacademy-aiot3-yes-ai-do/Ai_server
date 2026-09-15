@@ -149,7 +149,7 @@
         <dependency>
             <groupId>com.github.nhnacademy-aiot3-yes-ai-do</groupId>
             <artifactId>yesaido-common</artifactId>
-            <version>v1.2.2</version>
+            <version>v1.3.1</version>
         </dependency>
 
         <dependency>
